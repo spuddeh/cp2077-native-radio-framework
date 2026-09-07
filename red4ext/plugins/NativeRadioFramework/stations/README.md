@@ -13,6 +13,7 @@ Nothing in this folder is shared, so any number of station mods install side by 
 ```json
 {
   "name": "radio_station_20_hangouts",
+  "displayName": "90.5 Hangouts FM",
   "record": "RadioStation.HangoutsFM_905",
   "speaker": "Stanley",
   "tracks": [
@@ -29,6 +30,7 @@ Nothing in this folder is shared, so any number of station mods install side by 
 | Field | What it is |
 | --- | --- |
 | `name` | The station's own CName. It must be unique across every installed station mod. |
+| `displayName` | The label the game shows for the station. Defaults to `name`. |
 | `record` | The `gamedataRadioStation_Record` carrying the dial name and icon. See below. |
 | `speaker` | Optional. The station's DJ, an `audioRadioSpeakerType` name. Defaults to `None`. |
 | `tracks[].event` | A Wwise event name, posted to play the track. |

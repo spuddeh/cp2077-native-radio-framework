@@ -38,6 +38,8 @@ constexpr uint32_t kHashRoster      = 893652571;   // 0x3586d70, the 14-slot CNa
 constexpr uint32_t kHashResolve     = 4164035396;  // 0x4fe73c,  name -> index, bound is an imm8
 constexpr uint32_t kHashIndexToName = 2956468185;  // 0x6bafe0,  index -> name, bound is an imm8
 constexpr uint32_t kHashVehicleSet  = 4148435735;  // 0x25fdea8, the vehicle receiver's set-station
+constexpr uint32_t kHashNameTable   = 1433472801;  // 0x3586de0, a SECOND 14-slot CName array
+constexpr uint32_t kHashNameReader  = 2735481579;  // 0x1c55420, its only reader
 
 // --- patch sites, as offsets from those function starts ----------------------------------------
 constexpr size_t kResolveLeaOpcode = 0x0B;  // 4C 8D 05   lea r8, [rip+disp32]
@@ -52,6 +54,29 @@ constexpr size_t kIndexLeaDisp   = 0x0F;
 
 constexpr size_t kVehicleCmpOpcode = 0x5E;  // 83 FF 0E   cmp edi, 14
 constexpr size_t kVehicleCmpImm    = 0x60;
+
+// The station NAME table's reader, offsets from its own start. It takes the station index in edx
+// and reduces it MODULO 14 before the bounds check, so **slot 14 wraps to 0 and a custom station
+// reports Radio Vexelstrom's name**. `+0x03` to `+0x1B` is a magic-number division by 14, ending
+// in `sub r8d, eax`; `+0x1C` is `cmp r8d, 13`; `+0x22` is the `lea` naming the table.
+//
+// The division is REMOVED rather than retuned: r8d already holds the index from `+0x00`, and
+// `index % 14 == index` for every vanilla index, so erasing it changes nothing for the fourteen.
+constexpr size_t kNameMovR8   = 0x00;  // 44 8B C2   mov r8d, edx
+constexpr size_t kNameDivFrom = 0x03;  // first byte of the division
+constexpr size_t kNameDivTo   = 0x1C;  // one past its last byte
+constexpr size_t kNameImul    = 0x16;  // 6B C0 0E   imul eax, eax, 14
+constexpr size_t kNameSub     = 0x19;  // 44 2B C0   sub r8d, eax
+constexpr size_t kNameCmp     = 0x1C;  // 41 83 F8   cmp r8d, imm8
+constexpr size_t kNameCmpImm  = 0x1F;
+constexpr size_t kNameLea     = 0x22;  // 48 8D 15   lea rdx, [rip+disp32]
+constexpr size_t kNameLeaDisp = 0x25;
+
+constexpr uint8_t kMovR8Edx[] = {0x44, 0x8B, 0xC2};
+constexpr uint8_t kMovEaxImm[] = {0xB8, 0x25, 0x49, 0x92, 0x24};
+constexpr uint8_t kImulEax14[] = {0x6B, 0xC0, 0x0E};
+constexpr uint8_t kSubR8Eax[] = {0x44, 0x2B, 0xC0};
+constexpr uint8_t kCmpR8[] = {0x41, 0x83, 0xF8};
 
 constexpr uint8_t kLeaR8[]  = {0x4C, 0x8D, 0x05};
 constexpr uint8_t kLeaRdx[] = {0x48, 0x8D, 0x15};
@@ -73,6 +98,7 @@ struct Track
 struct Station
 {
     std::string name;         // the station CName, e.g. radio_station_20_hangouts
+    std::string displayName;  // the label the UI shows - the engine's name table holds one per station
     std::string record;       // the TweakDB RadioStation record carrying its name, icon and dial slot
     std::string speaker;      // audioRadioSpeakerType - the station's DJ
     std::vector<Track> tracks;
@@ -296,6 +322,7 @@ void LoadManifests()
 
         Station station;
         station.name = JsonString(text, "name");
+        station.displayName = JsonString(text, "displayName");
         station.record = JsonString(text, "record");
         station.speaker = JsonString(text, "speaker");
         station.tracks = JsonTracks(text);
@@ -388,16 +415,23 @@ void PatchRoster()
     const auto resolve = reinterpret_cast<uint8_t*>(ResolveByHash(kHashResolve));
     const auto indexToName = reinterpret_cast<uint8_t*>(ResolveByHash(kHashIndexToName));
     const auto vehicleSet = reinterpret_cast<uint8_t*>(ResolveByHash(kHashVehicleSet));
+    const auto nameTable = reinterpret_cast<uint64_t*>(ResolveByHash(kHashNameTable));
+    const auto nameReader = reinterpret_cast<uint8_t*>(ResolveByHash(kHashNameReader));
 
-    if (!roster || !resolve || !indexToName || !vehicleSet)
+    if (!roster || !resolve || !indexToName || !vehicleSet || !nameTable || !nameReader)
     {
         Log("address resolution failed - is RED4ext's address database present for this build?");
         return;
     }
 
-    // The roster is filled by a startup initialiser. Copying zeroes would erase every station.
+    // Both tables are filled by startup initialisers. Copying zeroes would erase every station.
     for (int i = 0; i < kVanillaCount; ++i)
     {
+        if (nameTable[i] == 0)
+        {
+            Log("name table slot " + std::to_string(i) + " is empty - too early to patch, abandoned");
+            return;
+        }
         if (roster[i] == 0)
         {
             Log("roster slot " + std::to_string(i) + " is empty - too early to patch, abandoned");
@@ -418,6 +452,12 @@ void PatchRoster()
         {indexToName + kIndexCmpOpcode, kCmpEax, sizeof(kCmpEax), "indexToName: cmp eax, imm8"},
         {indexToName + kIndexLeaOpcode, kLeaRdx, sizeof(kLeaRdx), "indexToName: lea rdx, [rip+disp32]"},
         {vehicleSet + kVehicleCmpOpcode, kCmpEdi, sizeof(kCmpEdi), "vehicleSet: cmp edi, imm8"},
+        {nameReader + kNameMovR8, kMovR8Edx, sizeof(kMovR8Edx), "nameReader: mov r8d, edx"},
+        {nameReader + kNameDivFrom, kMovEaxImm, sizeof(kMovEaxImm), "nameReader: mov eax, 0x24924925"},
+        {nameReader + kNameImul, kImulEax14, sizeof(kImulEax14), "nameReader: imul eax, eax, 14"},
+        {nameReader + kNameSub, kSubR8Eax, sizeof(kSubR8Eax), "nameReader: sub r8d, eax"},
+        {nameReader + kNameCmp, kCmpR8, sizeof(kCmpR8), "nameReader: cmp r8d, imm8"},
+        {nameReader + kNameLea, kLeaRdx, sizeof(kLeaRdx), "nameReader: lea rdx, [rip+disp32]"},
     };
     for (const auto& c : checks)
     {
@@ -428,9 +468,9 @@ void PatchRoster()
         }
     }
     if (resolve[kResolveCmpImm] != kVanillaCount || indexToName[kIndexCmpImm] != kVanillaCount - 1 ||
-        vehicleSet[kVehicleCmpImm] != kVanillaCount)
+        vehicleSet[kVehicleCmpImm] != kVanillaCount || nameReader[kNameCmpImm] != kVanillaCount - 1)
     {
-        Log("bounds are not the expected 14/13/14 - already patched, or a different build. Abandoned.");
+        Log("bounds are not the expected 14/13/14/13 - already patched, or a different build. Abandoned.");
         return;
     }
 
@@ -448,11 +488,28 @@ void PatchRoster()
         return;
     }
 
+    void* freshNames = AllocateNear(reinterpret_cast<uintptr_t>(nameReader), total * sizeof(uint64_t));
+    if (!freshNames)
+    {
+        Log("could not allocate the new name table within rip-relative reach");
+        return;
+    }
+
     auto* table = static_cast<uint64_t*>(fresh);
     std::memcpy(table, roster, kVanillaCount * sizeof(uint64_t));
+
+    // The name table holds the LABEL, which vanilla stores as a localization key. A station mod
+    // writes its own text, so a station with no displayName falls back to its station CName rather
+    // than leaving a zero the reader would hand to the UI.
+    auto* names = static_cast<uint64_t*>(freshNames);
+    std::memcpy(names, nameTable, kVanillaCount * sizeof(uint64_t));
+
     for (size_t i = 0; i < g_stations.size(); ++i)
     {
-        table[kVanillaCount + i] = Fnv1a64(g_stations[i].name);
+        const auto& station = g_stations[i];
+        const std::string& label = station.displayName.empty() ? station.name : station.displayName;
+        table[kVanillaCount + i] = Fnv1a64(station.name);
+        names[kVanillaCount + i] = Fnv1a64(label);
     }
 
     const int32_t dispResolve =
@@ -461,13 +518,25 @@ void PatchRoster()
     const int32_t dispIndex =
         static_cast<int32_t>(reinterpret_cast<uintptr_t>(table) -
                              (reinterpret_cast<uintptr_t>(indexToName) + kIndexLeaDisp + 4));
+    const int32_t dispNames =
+        static_cast<int32_t>(reinterpret_cast<uintptr_t>(names) -
+                             (reinterpret_cast<uintptr_t>(nameReader) + kNameLeaDisp + 4));
     const uint8_t boundTotal = static_cast<uint8_t>(total);
     const uint8_t boundLast = static_cast<uint8_t>(total - 1);
 
+    // Erasing the modulo leaves r8d holding the index the caller passed, which is what the bounds
+    // check below already expects.
+    const uint8_t nops[kNameDivTo - kNameDivFrom] = {
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+
     const bool ok = WriteBytes(resolve + kResolveLeaDisp, &dispResolve, sizeof(dispResolve)) &&
                     WriteBytes(indexToName + kIndexLeaDisp, &dispIndex, sizeof(dispIndex)) &&
+                    WriteBytes(nameReader + kNameLeaDisp, &dispNames, sizeof(dispNames)) &&
+                    WriteBytes(nameReader + kNameDivFrom, nops, sizeof(nops)) &&
                     WriteBytes(resolve + kResolveCmpImm, &boundTotal, 1) &&
                     WriteBytes(indexToName + kIndexCmpImm, &boundLast, 1) &&
+                    WriteBytes(nameReader + kNameCmpImm, &boundLast, 1) &&
                     WriteBytes(vehicleSet + kVehicleCmpImm, &boundTotal, 1);
 
     if (!ok)
@@ -651,6 +720,10 @@ void PoolNames()
     for (const auto& station : g_stations)
     {
         RED4ext::CNamePool::Add(station.name.c_str());
+        if (!station.displayName.empty())
+        {
+            RED4ext::CNamePool::Add(station.displayName.c_str());
+        }
         for (const auto& track : station.tracks)
         {
             RED4ext::CNamePool::Add(track.event.c_str());
