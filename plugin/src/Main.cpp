@@ -86,24 +86,54 @@ constexpr uint8_t kCmpEdi[] = {0x83, 0xFF};
 constexpr int kVanillaCount = 14;
 constexpr int kMaxStations = 127;  // both bounds are 8-bit immediates
 
-// An event has to be registered in eventsmetadata before the station can post it by name, and the
-// duration there is what the station schedules the next track against. Both come from the manifest.
+// A track is an audio FILE and a title. Nothing else, because nothing else has to be written by
+// hand: AudioXL registers the file, and it reports the length and the Wwise id the engine needs.
+// A manifest that carried a duration would be a second place for it to be wrong.
 struct Track
 {
-    std::string event;
-    float duration = 0.0f;  // seconds, the audible length
-    std::string title;      // the song title as it is shown, plain text, may be empty
+    std::string file;   // relative to the station's own manifest folder
+    std::string title;  // the song title as it is shown, plain text, may be empty
 };
 
 struct Station
 {
-    std::string name;         // the station CName, e.g. radio_station_20_hangouts
-    std::string displayName;  // the label the UI shows - the engine's name table holds one per station
-    std::string record;       // the TweakDB RadioStation record carrying its name, icon and dial slot
+    std::string name;         // the station CName, e.g. radio_station_20_tool
+    std::string displayName;  // the label the UI shows, plain text
+    std::string icon;         // an inkatlas part name, or empty for the framework's own glyph
+    std::string atlas;        // the inkatlas resource holding that part, or empty for the framework's
     std::string speaker;      // audioRadioSpeakerType - the station's DJ
     std::vector<Track> tracks;
     std::string source;       // which manifest it came from, for logging
+    std::string folder;       // the manifest's own directory, which track files are relative to
 };
+
+// Vanilla puts a LOCALIZATION KEY in the engine's name table and in every audioRadioTrack row, and
+// the UI resolves it. So the framework mints a key per station and registers the text against it,
+// rather than writing raw text where the game expects something to look up. The key is derived
+// from the station name so the plugin and the redscript half agree on it without passing it.
+std::string StationKey(const std::string& aStation)
+{
+    return "NRF-Station-" + aStation;
+}
+
+std::string TwoDigit(size_t aIndex)
+{
+    const size_t n = aIndex + 1;
+    return (n < 10 ? "0" : "") + std::to_string(n);
+}
+
+// A track's event name is DERIVED, never written in the manifest. The manifest names an audio file
+// and a title; the name AudioXL registers and the station posts is this, so the two cannot drift
+// and a filename with a space or an accent in it never reaches an event name.
+std::string TrackEvent(const Station& aStation, size_t aIndex)
+{
+    return aStation.name + "_" + TwoDigit(aIndex);
+}
+
+std::string TrackKey(const Station& aStation, size_t aIndex)
+{
+    return "NRF-Track-" + aStation.name + "-" + TwoDigit(aIndex);
+}
 
 std::vector<Station> g_stations;
 bool g_patched = false;
@@ -129,20 +159,6 @@ uintptr_t ResolveByHash(uint32_t aHash)
                        : nullptr;
     }();
     return resolve ? resolve(aHash) : 0;
-}
-
-// Wwise ids are FNV-1 32-bit of the lowercased name - multiply then xor, the opposite order to the
-// FNV-1a used for CNames. Getting the two the wrong way round produces an id that resolves to
-// nothing, silently.
-uint32_t Fnv1_32(const std::string& aText)
-{
-    uint32_t hash = 2166136261u;
-    for (unsigned char c : aText)
-    {
-        hash *= 16777619u;
-        hash ^= static_cast<unsigned char>(std::tolower(c));
-    }
-    return hash;
 }
 
 uint64_t Fnv1a64(const std::string& aText)
@@ -220,18 +236,9 @@ std::vector<Track> JsonTracks(const std::string& aText)
         const std::string chunk = aText.substr(objOpen, objClose - objOpen + 1);
 
         Track track;
-        track.event = JsonString(chunk, "event");
+        track.file = JsonString(chunk, "file");
         track.title = JsonString(chunk, "title");
-        const size_t d = chunk.find("\"duration\"");
-        if (d != std::string::npos)
-        {
-            const size_t colon = chunk.find(':', d);
-            if (colon != std::string::npos)
-            {
-                track.duration = static_cast<float>(std::atof(chunk.c_str() + colon + 1));
-            }
-        }
-        if (!track.event.empty() && track.duration > 0.0f)
+        if (!track.file.empty())
         {
             out.push_back(track);
         }
@@ -323,10 +330,12 @@ void LoadManifests()
         Station station;
         station.name = JsonString(text, "name");
         station.displayName = JsonString(text, "displayName");
-        station.record = JsonString(text, "record");
+        station.icon = JsonString(text, "icon");
+        station.atlas = JsonString(text, "atlas");
         station.speaker = JsonString(text, "speaker");
         station.tracks = JsonTracks(text);
         station.source = entry.path().filename().string();
+        station.folder = entry.path().string();
 
         if (station.name.empty())
         {
@@ -336,7 +345,7 @@ void LoadManifests()
         if (station.tracks.empty())
         {
             Log(station.source + ": station '" + station.name +
-                "' lists no usable tracks - each needs an \"event\" and a non-zero \"duration\" - skipped");
+                "' lists no usable tracks - each needs a \"file\" - skipped");
             continue;
         }
 
@@ -355,8 +364,8 @@ void LoadManifests()
         {
             Log(station.source + ": '" + station.name + "' with " +
                 std::to_string(station.tracks.size()) + " track(s)" +
-                (station.record.empty() ? ", NO record - it will not reach the dial"
-                                        : ", record " + station.record));
+                (station.displayName.empty() ? ", NO displayName - it will show its CName"
+                                             : ", '" + station.displayName + "'"));
             g_stations.push_back(std::move(station));
         }
     }
@@ -498,18 +507,17 @@ void PatchRoster()
     auto* table = static_cast<uint64_t*>(fresh);
     std::memcpy(table, roster, kVanillaCount * sizeof(uint64_t));
 
-    // The name table holds the LABEL, which vanilla stores as a localization key. A station mod
-    // writes its own text, so a station with no displayName falls back to its station CName rather
-    // than leaving a zero the reader would hand to the UI.
+    // The name table holds a LOCALIZATION KEY, not the label itself - every vanilla slot is a
+    // Gameplay-Devices-Radio-RadioStation* key that the UI looks up. Writing raw text here is what
+    // made the station selector fail to match: it compares against a resolved string. So each
+    // station gets a minted key, and the redscript half registers the text against it.
     auto* names = static_cast<uint64_t*>(freshNames);
     std::memcpy(names, nameTable, kVanillaCount * sizeof(uint64_t));
 
     for (size_t i = 0; i < g_stations.size(); ++i)
     {
-        const auto& station = g_stations[i];
-        const std::string& label = station.displayName.empty() ? station.name : station.displayName;
-        table[kVanillaCount + i] = Fnv1a64(station.name);
-        names[kVanillaCount + i] = Fnv1a64(label);
+        table[kVanillaCount + i] = Fnv1a64(g_stations[i].name);
+        names[kVanillaCount + i] = Fnv1a64(StationKey(g_stations[i].name));
     }
 
     const int32_t dispResolve =
@@ -559,6 +567,31 @@ void PatchRoster()
 // --- the script side of the manifest -----------------------------------------------------------
 // The redscript half needs the same list, and it must not be declared twice. These hand it over.
 
+// --- the script side of the manifest -----------------------------------------------------------
+// Everything the redscript half needs, so the station is declared once in the manifest and read
+// twice. String getters return "" and index getters 0 for anything out of range, so a caller that
+// loops past the end gets nothing rather than a crash.
+
+namespace
+{
+const Station* At(int32_t aIndex)
+{
+    if (!g_patched || aIndex < 0 || aIndex >= static_cast<int32_t>(g_stations.size()))
+    {
+        return nullptr;
+    }
+    return &g_stations[aIndex];
+}
+
+void OutString(RED4ext::CString* aOut, const std::string& aText)
+{
+    if (aOut)
+    {
+        *aOut = RED4ext::CString(aText.c_str());
+    }
+}
+} // namespace
+
 void NRF_StationCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
 {
     ++aFrame->code;
@@ -573,12 +606,59 @@ void NRF_StationName(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ex
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
     ++aFrame->code;
+    const Station* s = At(index);
     if (aOut)
     {
-        *aOut = (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
-                    ? RED4ext::CName(g_stations[index].name.c_str())
-                    : RED4ext::CName();
+        *aOut = s ? RED4ext::CName(s->name.c_str()) : RED4ext::CName();
     }
+}
+
+void NRF_StationKey(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
+{
+    int32_t index = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    ++aFrame->code;
+    const Station* s = At(index);
+    if (aOut)
+    {
+        *aOut = s ? RED4ext::CName(StationKey(s->name).c_str()) : RED4ext::CName();
+    }
+}
+
+void NRF_StationDisplayName(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+{
+    int32_t index = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    ++aFrame->code;
+    const Station* s = At(index);
+    OutString(aOut, s ? (s->displayName.empty() ? s->name : s->displayName) : std::string());
+}
+
+void NRF_StationIcon(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+{
+    int32_t index = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    ++aFrame->code;
+    const Station* s = At(index);
+    OutString(aOut, s ? s->icon : std::string());
+}
+
+void NRF_StationAtlas(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+{
+    int32_t index = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    ++aFrame->code;
+    const Station* s = At(index);
+    OutString(aOut, s ? s->atlas : std::string());
+}
+
+void NRF_StationSpeaker(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+{
+    int32_t index = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    ++aFrame->code;
+    const Station* s = At(index);
+    OutString(aOut, s ? s->speaker : std::string());
 }
 
 void NRF_StationTrackCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
@@ -586,11 +666,10 @@ void NRF_StationTrackCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, 
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
     ++aFrame->code;
+    const Station* s = At(index);
     if (aOut)
     {
-        *aOut = (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
-                    ? static_cast<int32_t>(g_stations[index].tracks.size())
-                    : 0;
+        *aOut = s ? static_cast<int32_t>(s->tracks.size()) : 0;
     }
 }
 
@@ -605,44 +684,13 @@ void NRF_StationTrack(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4e
     {
         return;
     }
-    *aOut = RED4ext::CName();
-    if (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
-    {
-        const auto& tracks = g_stations[index].tracks;
-        if (track >= 0 && track < static_cast<int32_t>(tracks.size()))
-        {
-            *aOut = RED4ext::CName(tracks[track].event.c_str());
-        }
-    }
+    const Station* s = At(index);
+    *aOut = (s && track >= 0 && track < static_cast<int32_t>(s->tracks.size()))
+                ? RED4ext::CName(TrackEvent(*s, track).c_str())
+                : RED4ext::CName();
 }
 
-void NRF_StationSpeaker(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
-{
-    int32_t index = -1;
-    RED4ext::GetParameter(aFrame, &index);
-    ++aFrame->code;
-    if (aOut)
-    {
-        *aOut = (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
-                    ? RED4ext::CString(g_stations[index].speaker.c_str())
-                    : RED4ext::CString("");
-    }
-}
-
-void NRF_StationRecord(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
-{
-    int32_t index = -1;
-    RED4ext::GetParameter(aFrame, &index);
-    ++aFrame->code;
-    if (aOut)
-    {
-        *aOut = (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
-                    ? RED4ext::CString(g_stations[index].record.c_str())
-                    : RED4ext::CString("");
-    }
-}
-
-void NRF_StationTrackDuration(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t)
+void NRF_StationTrackKey(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
 {
     int32_t index = -1;
     int32_t track = -1;
@@ -653,41 +701,31 @@ void NRF_StationTrackDuration(RED4ext::IScriptable*, RED4ext::CStackFrame* aFram
     {
         return;
     }
-    *aOut = 0.0f;
-    if (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
-    {
-        const auto& tracks = g_stations[index].tracks;
-        if (track >= 0 && track < static_cast<int32_t>(tracks.size()))
-        {
-            *aOut = tracks[track].duration;
-        }
-    }
+    const Station* s = At(index);
+    *aOut = (s && track >= 0 && track < static_cast<int32_t>(s->tracks.size()))
+                ? RED4ext::CName(TrackKey(*s, track).c_str())
+                : RED4ext::CName();
 }
 
-void NRF_StationTrackWwiseId(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint32_t* aOut, int64_t)
+// An absolute path, because AudioXL's RegisterSound takes one and the station mod's folder is the
+// only place the file is known to be.
+void NRF_StationTrackFile(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
     int32_t track = -1;
     RED4ext::GetParameter(aFrame, &index);
     RED4ext::GetParameter(aFrame, &track);
     ++aFrame->code;
-    if (!aOut)
+    const Station* s = At(index);
+    if (s && track >= 0 && track < static_cast<int32_t>(s->tracks.size()))
     {
+        const auto full = std::filesystem::path(s->folder) / s->tracks[track].file;
+        OutString(aOut, full.string());
         return;
     }
-    *aOut = 0;
-    if (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
-    {
-        const auto& tracks = g_stations[index].tracks;
-        if (track >= 0 && track < static_cast<int32_t>(tracks.size()))
-        {
-            *aOut = Fnv1_32(tracks[track].event);
-        }
-    }
+    OutString(aOut, std::string());
 }
 
-// The title is shown as written. A track with no title in its manifest returns an empty string
-// and the UI keeps the name it already had.
 void NRF_StationTrackTitle(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
@@ -695,24 +733,12 @@ void NRF_StationTrackTitle(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, 
     RED4ext::GetParameter(aFrame, &index);
     RED4ext::GetParameter(aFrame, &track);
     ++aFrame->code;
-    if (!aOut)
-    {
-        return;
-    }
-    *aOut = RED4ext::CString("");
-    if (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
-    {
-        const auto& tracks = g_stations[index].tracks;
-        if (track >= 0 && track < static_cast<int32_t>(tracks.size()))
-        {
-            *aOut = RED4ext::CString(tracks[track].title.c_str());
-        }
-    }
+    const Station* s = At(index);
+    OutString(aOut, (s && track >= 0 && track < static_cast<int32_t>(s->tracks.size()))
+                        ? s->tracks[track].title
+                        : std::string());
 }
 
-// The redscript half declares these inside `module NativeRadioFramework`, so the name it resolves
-// is module-qualified. Registering them bare fails script validation with "Missing native global
-// function", which stops every redscript mod on the machine from compiling - not just this one.
 // A CName built from a string carries the hash but not the string, so anything that prints or
 // resolves it by text sees nothing. Registering the pair costs nothing and makes logs readable.
 void PoolNames()
@@ -720,13 +746,11 @@ void PoolNames()
     for (const auto& station : g_stations)
     {
         RED4ext::CNamePool::Add(station.name.c_str());
-        if (!station.displayName.empty())
+        RED4ext::CNamePool::Add(StationKey(station.name).c_str());
+        for (size_t i = 0; i < station.tracks.size(); ++i)
         {
-            RED4ext::CNamePool::Add(station.displayName.c_str());
-        }
-        for (const auto& track : station.tracks)
-        {
-            RED4ext::CNamePool::Add(track.event.c_str());
+            RED4ext::CNamePool::Add(TrackEvent(station, i).c_str());
+            RED4ext::CNamePool::Add(TrackKey(station, i).c_str());
         }
     }
 }
@@ -737,68 +761,37 @@ void RegisterNatives()
 
     auto* rtti = RED4ext::CRTTISystem::Get();
 
-    auto* count = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationCount", "NRF_StationCount", &NRF_StationCount);
-    count->flags.isNative = true;
-    count->SetReturnType("Int32");
-    rtti->RegisterFunction(count);
+    // Each native has its own return type, so registration goes through a template rather than a
+    // table of void pointers - CGlobalFunction::Create deduces the signature from the function.
+    const auto reg = [rtti](const char* aName, auto aFn, const char* aReturn, int aParams)
+    {
+        const std::string full = std::string("NativeRadioFramework.") + aName;
+        auto* fn = RED4ext::CGlobalFunction::Create(full.c_str(), aName, aFn);
+        fn->flags.isNative = true;
+        if (aParams >= 1)
+        {
+            fn->AddParam("Int32", "index");
+        }
+        if (aParams >= 2)
+        {
+            fn->AddParam("Int32", "track");
+        }
+        fn->SetReturnType(aReturn);
+        rtti->RegisterFunction(fn);
+    };
 
-    auto* name = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationName", "NRF_StationName", &NRF_StationName);
-    name->flags.isNative = true;
-    name->AddParam("Int32", "index");
-    name->SetReturnType("CName");
-    rtti->RegisterFunction(name);
-
-    auto* trackCount =
-        RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrackCount", "NRF_StationTrackCount", &NRF_StationTrackCount);
-    trackCount->flags.isNative = true;
-    trackCount->AddParam("Int32", "index");
-    trackCount->SetReturnType("Int32");
-    rtti->RegisterFunction(trackCount);
-
-    auto* track = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrack", "NRF_StationTrack", &NRF_StationTrack);
-    track->flags.isNative = true;
-    track->AddParam("Int32", "index");
-    track->AddParam("Int32", "track");
-    track->SetReturnType("CName");
-    rtti->RegisterFunction(track);
-
-    auto* record = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationRecord",
-                                                    "NRF_StationRecord", &NRF_StationRecord);
-    record->flags.isNative = true;
-    record->AddParam("Int32", "index");
-    record->SetReturnType("String");
-    rtti->RegisterFunction(record);
-
-    auto* speaker = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationSpeaker",
-                                                     "NRF_StationSpeaker", &NRF_StationSpeaker);
-    speaker->flags.isNative = true;
-    speaker->AddParam("Int32", "index");
-    speaker->SetReturnType("String");
-    rtti->RegisterFunction(speaker);
-
-    auto* duration = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrackDuration", "NRF_StationTrackDuration",
-                                                      &NRF_StationTrackDuration);
-    duration->flags.isNative = true;
-    duration->AddParam("Int32", "index");
-    duration->AddParam("Int32", "track");
-    duration->SetReturnType("Float");
-    rtti->RegisterFunction(duration);
-
-    auto* wwise = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrackWwiseId", "NRF_StationTrackWwiseId",
-                                                   &NRF_StationTrackWwiseId);
-    wwise->flags.isNative = true;
-    wwise->AddParam("Int32", "index");
-    wwise->AddParam("Int32", "track");
-    wwise->SetReturnType("Uint32");
-    rtti->RegisterFunction(wwise);
-
-    auto* title = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrackTitle", "NRF_StationTrackTitle",
-                                                   &NRF_StationTrackTitle);
-    title->flags.isNative = true;
-    title->AddParam("Int32", "index");
-    title->AddParam("Int32", "track");
-    title->SetReturnType("String");
-    rtti->RegisterFunction(title);
+    reg("NRF_StationCount", &NRF_StationCount, "Int32", 0);
+    reg("NRF_StationName", &NRF_StationName, "CName", 1);
+    reg("NRF_StationKey", &NRF_StationKey, "CName", 1);
+    reg("NRF_StationDisplayName", &NRF_StationDisplayName, "String", 1);
+    reg("NRF_StationIcon", &NRF_StationIcon, "String", 1);
+    reg("NRF_StationAtlas", &NRF_StationAtlas, "String", 1);
+    reg("NRF_StationSpeaker", &NRF_StationSpeaker, "String", 1);
+    reg("NRF_StationTrackCount", &NRF_StationTrackCount, "Int32", 1);
+    reg("NRF_StationTrack", &NRF_StationTrack, "CName", 2);
+    reg("NRF_StationTrackKey", &NRF_StationTrackKey, "CName", 2);
+    reg("NRF_StationTrackFile", &NRF_StationTrackFile, "String", 2);
+    reg("NRF_StationTrackTitle", &NRF_StationTrackTitle, "String", 2);
 }
 } // namespace
 

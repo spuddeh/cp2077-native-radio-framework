@@ -2,18 +2,17 @@
 // Mod Name: Native Radio Framework
 // Author: Spuddeh
 // Description: Puts custom stations on the radio dial, in the UI and in the cycling order.
-// File Version: 0.1.0
+// File Version: 0.2.0
 // Credits: RED4ext by WopsS.
 // ======================================================================================
 //
-// The engine plays a custom station once its identity is in the roster. The DIAL is a separate
-// problem and an entirely script-side one: `RadioStationDataProvider` holds the fourteen vanilla
-// stations in five hardcoded switch maps, and `VehiclesManagerDataHelper` pushes fifteen literal
-// TweakDB record ids. Neither knows about anything past the vanilla set.
+// The engine plays a custom station once its identity is in the roster, and it LABELS one once the
+// name table holds its key. The DIAL is a third problem and an entirely script-side one:
+// `RadioStationDataProvider` holds the fourteen vanilla stations in hardcoded switch maps, and
+// `VehiclesManagerDataHelper` pushes fifteen literal TweakDB record ids. Neither has a table behind
+// it to extend, so these are wrapped - and that is the only reason anything here is a wrapper.
 //
-// A custom station's enum value is its roster slot: the first one is 14, the next 15, and so on.
-// Its UI index is the same number, so custom stations sit after the vanilla fourteen on the dial in
-// the order they were discovered.
+// A custom station's enum value is its roster slot: the first is 14, the next 15, and so on.
 //
 // **Three of these are @replaceMethod and that is deliberate.** The cycling functions carry `% 14`
 // inside them, so wrapping cannot reach the modulus. It also means this framework is an alternative
@@ -24,37 +23,14 @@ module NativeRadioFramework
 @if(ModuleExists("TweakXL"))
 import TweakXL.*
 
-// The record's `index` is what the vehicle radio popup plays: it calls
-// `SendRadioEvent(true, true, data.m_record.Index())` and compares the current station against it.
-// So a station's index MUST equal the roster slot the plugin gave it, and that slot depends on how
-// many station mods are installed and in what order they were discovered.
-//
-// A station mod therefore cannot know its own index when it writes its yaml. The framework assigns
-// it here instead, and whatever the yaml says is overwritten.
-@if(ModuleExists("TweakXL"))
-public class NRFIndex extends ScriptableService {
-  private cb func OnLoad() {
-    let count: Int32 = NRF_StationCount();
-    let i: Int32 = 0;
-    while i < count {
-      let path: String = NRF_StationRecord(i);
-      if StrLen(path) > 0 {
-        let slot: Int32 = 14 + i;
-        TweakDBManager.SetFlat(TDBID.Create(path + ".index"), ToVariant(slot));
-        TweakDBManager.UpdateRecord(TDBID.Create(path));
-        NRFLog(s"\(path) index set to \(slot)");
-      }
-      i += 1;
-    }
+// The framework's own atlas, used by a station that names no icon of its own.
+public class NRFIcons {
+  public final static func FallbackAtlas() -> String {
+    return "nativeradioframework\\gui\\stations.inkatlas";
   }
-}
 
-// Without TweakXL a station keeps whatever index its yaml declared, which is only correct when it
-// is the sole station installed. Its record could not have been created without TweakXL either.
-@if(!ModuleExists("TweakXL"))
-public class NRFIndex extends ScriptableService {
-  private cb func OnLoad() {
-    NRFLog("TweakXL is absent - station indices are left as declared, which breaks with more than one station mod");
+  public final static func FallbackPart() -> String {
+    return "nrf_default";
   }
 }
 
@@ -69,46 +45,104 @@ public class NRFDial {
     return 14 + NRF_StationCount();
   }
 
+  // Every record the framework creates is named after the station, so nothing has to be declared in
+  // a mod's yaml and no two station mods can collide on a record id.
+  public final static func RecordName(slot: Int32) -> String {
+    return "RadioStation.NRF_" + NameToString(NRF_StationName(slot));
+  }
+
+  public final static func IconName(slot: Int32) -> String {
+    return "UIIcon.NRF_" + NameToString(NRF_StationName(slot));
+  }
+
   public final static func Record(station: Int32) -> TweakDBID {
     let slot: Int32 = NRFDial.Slot(station);
-    if slot < 0 { return TDBID.None(); }
-    let path: String = NRF_StationRecord(slot);
-    return StrLen(path) > 0 ? TDBID.Create(path) : TDBID.None();
+    return slot < 0 ? TDBID.None() : TDBID.Create(NRFDial.RecordName(slot));
   }
 }
 
-// --- how many stations there are ---------------------------------------------------------------
+// --- the TweakDB records -------------------------------------------------------------------------
+// A station mod ships a manifest, its audio and at most an icon archive. The records the dial needs
+// are built here from that manifest, so a mod author never writes a yaml and never has to guess an
+// index: the index MUST equal the roster slot the plugin assigned, and that depends on how many
+// station mods are installed and in what order they were found.
+
+@if(ModuleExists("TweakXL"))
+public class NRFRecords extends ScriptableService {
+  private cb func OnLoad() {
+    let count: Int32 = NRF_StationCount();
+    let i: Int32 = 0;
+    while i < count {
+      this.Build(i);
+      i += 1;
+    }
+    if count > 0 {
+      NRFLog(s"built \(count) station record(s)");
+    }
+  }
+
+  private func Build(slot: Int32) -> Void {
+    let iconName: String = NRFDial.IconName(slot);
+    let iconId: TweakDBID = TDBID.Create(iconName);
+
+    let part: String = NRF_StationIcon(slot);
+    let atlas: String = NRF_StationAtlas(slot);
+    if StrLen(part) == 0 {
+      part = NRFIcons.FallbackPart();
+      atlas = NRFIcons.FallbackAtlas();
+    }
+    if StrLen(atlas) == 0 {
+      atlas = NRFIcons.FallbackAtlas();
+    }
+
+    TweakDBManager.CreateRecord(StringToName(iconName), n"gamedataUIIcon_Record");
+    TweakDBManager.SetFlat(TDBID.Create(iconName + ".atlasPartName"), ToVariant(StringToName(part)));
+    TweakDBManager.SetFlat(TDBID.Create(iconName + ".atlasResourcePath"), ToVariant(atlas));
+    TweakDBManager.UpdateRecord(iconId);
+
+    // The display name is plain text. The engine's name table holds the station's localization KEY
+    // and the popup compares the two resolved strings, so both sides have to land on the same text.
+    let recordName: String = NRFDial.RecordName(slot);
+    let recordId: TweakDBID = TDBID.Create(recordName);
+    TweakDBManager.CreateRecord(StringToName(recordName), n"gamedataRadioStation_Record");
+    TweakDBManager.SetFlat(TDBID.Create(recordName + ".displayName"),
+                           ToVariant(NRF_StationDisplayName(slot)));
+    TweakDBManager.SetFlat(TDBID.Create(recordName + ".icon"), ToVariant(iconId));
+    TweakDBManager.SetFlat(TDBID.Create(recordName + ".index"), ToVariant(14 + slot));
+    TweakDBManager.UpdateRecord(recordId);
+  }
+}
+
+// Without TweakXL there are no records, so a custom station plays but never reaches the dial.
+@if(!ModuleExists("TweakXL"))
+public class NRFRecords extends ScriptableService {
+  private cb func OnLoad() {
+    if NRF_StationCount() > 0 {
+      NRFLog("TweakXL is absent - stations play but cannot appear on the dial");
+    }
+  }
+}
+
+// --- how many stations there are -------------------------------------------------------------------
 
 @wrapMethod(RadioStationDataProvider)
 public final static func GetStationsCount() -> Int32 {
   return wrappedMethod() + NRF_StationCount();
 }
 
-// --- name and channel --------------------------------------------------------------------------
+// --- name and channel ------------------------------------------------------------------------------
 
 @wrapMethod(RadioStationDataProvider)
 public final static func GetStationName(radioStationType: ERadioStationList) -> CName {
   let slot: Int32 = NRFDial.Slot(EnumInt(radioStationType));
-  if slot >= 0 {
-    NRFLog(s"GetStationName(\(EnumInt(radioStationType))) -> \(NRF_StationName(slot))");
-    return NRF_StationName(slot);
-  }
-  return wrappedMethod(radioStationType);
+  return slot >= 0 ? NRF_StationName(slot) : wrappedMethod(radioStationType);
 }
 
-// The channel name is a localisation key, shown by device radios. A custom station has no vanilla
-// key, so it borrows its own record's display name.
+// A channel name is a localization KEY, and a custom station has one minted for it.
 @wrapMethod(RadioStationDataProvider)
 public final static func GetChannelName(radioStationType: ERadioStationList) -> String {
-  let station: Int32 = EnumInt(radioStationType);
-  if NRFDial.Slot(station) >= 0 {
-    let record = TweakDBInterface.GetRadioStationRecord(NRFDial.Record(station));
-    if IsDefined(record) {
-      return GetLocalizedText(record.DisplayName());
-    }
-    return "";
-  }
-  return wrappedMethod(radioStationType);
+  let slot: Int32 = NRFDial.Slot(EnumInt(radioStationType));
+  return slot >= 0 ? NameToString(NRF_StationKey(slot)) : wrappedMethod(radioStationType);
 }
 
 // --- dial order ---------------------------------------------------------------------------------
@@ -116,18 +150,12 @@ public final static func GetChannelName(radioStationType: ERadioStationList) -> 
 
 @wrapMethod(RadioStationDataProvider)
 public final static func GetRadioStationUIIndex(index: Int32) -> Int32 {
-  if NRFDial.Slot(index) >= 0 {
-    return index;
-  }
-  return wrappedMethod(index);
+  return NRFDial.Slot(index) >= 0 ? index : wrappedMethod(index);
 }
 
 @wrapMethod(RadioStationDataProvider)
 public final static func GetRadioStationByUIIndex(index: Int32) -> ERadioStationList {
-  if NRFDial.Slot(index) >= 0 {
-    return IntEnum<ERadioStationList>(index);
-  }
-  return wrappedMethod(index);
+  return NRFDial.Slot(index) >= 0 ? IntEnum<ERadioStationList>(index) : wrappedMethod(index);
 }
 
 // --- cycling -------------------------------------------------------------------------------------
@@ -187,29 +215,26 @@ public final static func GetRadioStations(player: ref<GameObject>) -> array<ref<
   let count: Int32 = NRF_StationCount();
   let i: Int32 = 0;
   while i < count {
-    let id: TweakDBID = NRFDial.Record(14 + i);
-    if TDBID.IsValid(id) {
-      let record = TweakDBInterface.GetRadioStationRecord(id);
-      if IsDefined(record) {
-        let data = new RadioListItemData();
-        data.m_record = record;
+    let record = TweakDBInterface.GetRadioStationRecord(TDBID.Create(NRFDial.RecordName(i)));
+    if IsDefined(record) {
+      let data = new RadioListItemData();
+      data.m_record = record;
 
-        let ours: Float = NRFFreq.Of(record);
-        let at: Int32 = -1;
-        let j: Int32 = 0;
-        while j < ArraySize(list) {
-          let row = list[j] as RadioListItemData;
-          // No Station has no frequency and parses as -1, so it always stays first.
-          if at < 0 && IsDefined(row) && NRFFreq.Of(row.m_record) > ours {
-            at = j;
-          }
-          j += 1;
+      let ours: Float = NRFFreq.Of(record);
+      let at: Int32 = -1;
+      let j: Int32 = 0;
+      while j < ArraySize(list) {
+        let row = list[j] as RadioListItemData;
+        // No Station has no frequency and parses as -1, so it always stays first.
+        if at < 0 && IsDefined(row) && NRFFreq.Of(row.m_record) > ours {
+          at = j;
         }
-        if at < 0 {
-          ArrayPush(list, data);
-        } else {
-          ArrayInsert(list, at, data);
-        }
+        j += 1;
+      }
+      if at < 0 {
+        ArrayPush(list, data);
+      } else {
+        ArrayInsert(list, at, data);
       }
     }
     i += 1;
@@ -238,46 +263,4 @@ private final func SetupStationLogo() -> Void {
   // The vehicle popup already solves this: given a UIIcon record id, RequestSetImage loads the
   // record's own atlas and part. Setting the part alone would leave the vanilla atlas in place.
   InkImageUtils.RequestSetImage(this, this.m_stationLogoWidget, stationRecord.Icon().GetID(), n"");
-  NRFLog(s"device logo: station \(station) -> \(stationRecord.Icon().GetID())");
-}
-
-// --- song titles ----------------------------------------------------------------------------
-// A vanilla track name is a localization key and the popup calls SetLocalizedText with it. A
-// custom station's titles are plain text in the manifest, so they are substituted here rather
-// than registered as strings the game would have to look up.
-//
-// The lookup is by track EVENT name, which is what the receiver reports, so it does not depend on
-// knowing which station is playing, and it serves the Radioport and the car alike.
-
-public class NRFTitle {
-  public final static func Of(event: CName) -> String {
-    if !IsNameValid(event) {
-      return "";
-    }
-    let station: Int32 = 0;
-    let count: Int32 = NRF_StationCount();
-    while station < count {
-      let tracks: Int32 = NRF_StationTrackCount(station);
-      let t: Int32 = 0;
-      while t < tracks {
-        if Equals(NRF_StationTrack(station, t), event) {
-          return NRF_StationTrackTitle(station, t);
-        }
-        t += 1;
-      }
-      station += 1;
-    }
-    return "";
-  }
-}
-
-@wrapMethod(VehicleRadioPopupGameController)
-private final func SetTrackName(track: CName) -> Void {
-  let title: String = NRFTitle.Of(track);
-  if StrLen(title) > 0 {
-    inkTextRef.SetText(this.m_trackName, title);
-    inkWidgetRef.SetVisible(this.m_trackName, true);
-    return;
-  }
-  wrappedMethod(track);
 }

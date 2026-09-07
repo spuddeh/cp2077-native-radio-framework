@@ -1,28 +1,26 @@
 # Station manifests
 
-Every station is one folder in here, named after the mod that ships it:
+A station is one folder in here, named after the mod that ships it:
 
-```
+```text
 red4ext/plugins/NativeRadioFramework/stations/<YourMod>/station.json
 ```
 
 Nothing in this folder is shared, so any number of station mods install side by side.
 
+**A station mod is a manifest, its audio files, and at most an icon archive.** No yaml, no
+soundbank, no redscript. Everything else is built from the manifest at load.
+
 ## station.json
 
 ```json
 {
-  "name": "radio_station_20_hangouts",
-  "displayName": "90.5 Hangouts FM",
-  "record": "RadioStation.HangoutsFM_905",
-  "speaker": "Stanley",
+  "name": "radio_station_20_yourstation",
+  "displayName": "104.9 Your Station",
+  "speaker": "Ash",
   "tracks": [
-    {
-      "event": "mus_radio_20_hangouts_01",
-      "duration": 187.474,
-      "title": "Artist - Song Title"
-    },
-    { "event": "mus_radio_20_hangouts_02", "duration": 165.818 }
+    { "file": "audio/first.mp3",  "title": "Artist - First Song" },
+    { "file": "audio/second.flac", "title": "Artist - Second Song" }
   ]
 }
 ```
@@ -30,51 +28,52 @@ Nothing in this folder is shared, so any number of station mods install side by 
 | Field | What it is |
 | --- | --- |
 | `name` | The station's own CName. It must be unique across every installed station mod. |
-| `displayName` | The label the game shows for the station. Defaults to `name`. |
-| `record` | The `gamedataRadioStation_Record` carrying the dial name and icon. See below. |
-| `speaker` | Optional. The station's DJ, an `audioRadioSpeakerType` name. Defaults to `None`. |
-| `tracks[].event` | A Wwise event name, posted to play the track. |
-| `tracks[].duration` | The track's audible length in **seconds**. |
+| `displayName` | The label the game shows. Put the frequency at the front. |
+| `speaker` | Optional. The station's DJ. Defaults to `None`. |
+| `icon` | Optional. An inkatlas part name. Defaults to the framework's own glyph. |
+| `atlas` | Optional. The inkatlas holding that part. Required when `icon` is set. |
+| `tracks[].file` | An audio file, relative to this manifest's folder. |
 | `tracks[].title` | Optional. The song title, shown as written. |
-
-**`duration` is not decoration.** The station schedules the next track against it, so a value that
-is too short cuts the song off and one that is too long leaves dead air.
 
 `speaker` names one of `Stanley`, `MaximumMike`, `Ash`, `Kurtz` or `PoliceDispatch`. Every vanilla
 station names one; a station without one plays.
 
-## Song titles
+**The frequency lives at the front of `displayName`**, because the game has no field for it, and it
+is what the vehicle radio list sorts on. A station whose display name does not start with a number
+sorts to the top.
 
-`title` is the title as the player reads it, not a localization key. The framework puts it on
-screen directly, so nothing has to be shipped in an archive and no key has to be registered.
+## What the manifest does NOT carry
 
-A track with no `title` shows whatever the game would have shown, which for a custom event is
-nothing.
+**No durations.** AudioXL reports the length of each file, and the station schedules the next track
+against that. A hand-written duration is a second place for it to be wrong.
 
-## The TweakDB record
+**No event names.** They are derived as `<name>_01`, `<name>_02` and so on, so a filename with a
+space or an accent in it never reaches an event name.
 
-`record` names a `gamedataRadioStation_Record` your mod ships through TweakXL, carrying the
-station's `displayName`, `icon` and `index`. The display name is where the frequency lives - the
-game has no separate field for it.
-
-**Do not try to pick your own `index`.** The value in your yaml is overwritten at load. A station's
-index has to equal the roster slot the framework gave it, which depends on how many station mods
-are installed and in what order they were found - so no mod can know its own index in advance. The
-popup plays whatever `Index()` returns, so a wrong one plays the wrong station.
-
-Put any valid number in the yaml to satisfy the record type. `14` is as good as any.
+**No Wwise ids, no `index`, no TweakDB records.** A station's index must equal the roster slot the
+framework assigned, which depends on how many station mods are installed and in what order they
+were found - so no mod can know its own in advance. The framework creates the records.
 
 ## The audio
 
-This framework does not load, decode or stream sound. A track's event has to exist in a soundbank
-that something else loads, which in practice means **AudioXL**.
+Put the files beside the manifest. **AudioXL is what loads them**, so it is a hard requirement for
+any station with files: WAV, MP3, OGG or FLAC. This framework does not decode, stream or mix
+anything.
 
-A station whose tracks are all vanilla radio events needs no bank at all.
+A track whose file AudioXL will not take is dropped, and the log names it. A station with no
+playable tracks is skipped rather than registered empty.
+
+## Song titles and the station name
+
+Both are plain text here, and both are registered as real localization entries at load. **Every
+label the game shows is a key, not text** - the engine's station name table holds one, and so does
+every radio track row - so the framework mints a key and registers the text against it. That is why
+a custom station's name and titles resolve everywhere a vanilla one's do.
 
 ## Two things that will bite
 
 **A station name that another installed mod already uses is skipped**, and the log says which mod
 won. Prefix yours.
 
-**A track whose event is missing from the loaded banks plays silence** and reports no error. If a
-station is quiet, check the bank loaded before suspecting the manifest.
+**A track whose file is missing plays nothing** and the station is shorter than the manifest says.
+The log names every file AudioXL refused.
