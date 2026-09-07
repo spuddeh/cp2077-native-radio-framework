@@ -58,13 +58,27 @@ public func NRFSpeaker(name: String) -> audioRadioSpeakerType {
   return audioRadioSpeakerType.None;
 }
 
+// AudioXL answers only once its registry is ready, several seconds after the audio metadata
+// loads. This carries the retry.
+public class NRFPoll extends DelayCallback {
+  public let service: wref<NativeRadioFramework>;
+
+  public func Call() -> Void {
+    if IsDefined(this.service) {
+      this.service.Poll();
+    }
+  }
+}
+
 public class NativeRadioFramework extends ScriptableService {
 
   private let m_tokens: array<ref<ResourceToken>>;
+  private let m_events: ref<audioAudioEventArray>;
   private let m_audioDone: Bool;
   private let m_cookedDone: Bool;
   private let m_eventsDone: Bool;
   private let m_textDone: Bool;
+  private let m_polls: Int32;
 
   private cb func OnLoad() {
     let cb = GameInstance.GetCallbackSystem();
@@ -136,14 +150,46 @@ public class NativeRadioFramework extends ScriptableService {
   }
 
   private func RegisterEvents(resource: ref<JsonResource>) -> Void {
-    if !IsDefined(resource) || this.m_eventsDone { return; }
+    if !IsDefined(resource) || IsDefined(this.m_events) { return; }
     let events = resource.root as audioAudioEventArray;
     if !IsDefined(events) { return; }
 
-    this.RegisterAudio();
-    this.m_eventsDone = true;
+    // The rows cannot be written yet. AudioXL reports a length only once its registry is ready,
+    // and that happens several seconds after this resource loads, so the array is kept and filled
+    // in as soon as it can answer. A row written now would carry a zero duration, and a station
+    // schedules its next track against that.
+    this.m_events = events;
+    this.Poll();
+  }
 
+  // Runs until AudioXL can answer, then registers the audio and writes the event rows. Bounded, so
+  // a missing or broken AudioXL costs a minute of polling rather than a permanent timer.
+  public func Poll() -> Void {
+    if this.m_eventsDone { return; }
+
+    if NRFAudio.Available() {
+      this.RegisterAudio();
+      if this.WriteEvents() {
+        return;
+      }
+    }
+
+    this.m_polls += 1;
+    if this.m_polls > 120 {
+      NRFLog("AudioXL never became ready - no track has a duration, so no station can play");
+      return;
+    }
+
+    let delay = GameInstance.GetDelaySystem(GetGameInstance());
+    if !IsDefined(delay) { return; }
+    let again = new NRFPoll();
+    again.service = this;
+    delay.DelayCallback(again, 0.5);
+  }
+
+  private func WriteEvents() -> Bool {
     let added: Int32 = 0;
+    let missing: Int32 = 0;
     let station: Int32 = 0;
     let count: Int32 = NRF_StationCount();
     while station < count {
@@ -152,25 +198,34 @@ public class NativeRadioFramework extends ScriptableService {
       while t < tracks {
         let name: CName = NRF_StationTrack(station, t);
         let duration: Float = NRFAudio.Duration(name);
-        if IsNameValid(name) && duration > 0.0 && !this.HasEvent(events, name) {
-          let row: audioAudioEventMetadataArrayElement;
-          row.redId = name;
-          row.wwiseId = NRFAudio.WwiseId(name);
-          row.isLooping = false;
-          row.maxAttenuation = 0.0;
-          row.minDuration = duration;
-          row.maxDuration = duration;
-          ArrayPush(events.events, row);
-          added += 1;
-        }
         if duration <= 0.0 {
-          NRFLog(s"\(name) has no duration - AudioXL did not register it, so it cannot play");
+          missing += 1;
+        } else {
+          if !this.HasEvent(this.m_events, name) {
+            let row: audioAudioEventMetadataArrayElement;
+            row.redId = name;
+            row.wwiseId = NRFAudio.WwiseId(name);
+            row.isLooping = false;
+            row.maxAttenuation = 0.0;
+            row.minDuration = duration;
+            row.maxDuration = duration;
+            ArrayPush(this.m_events.events, row);
+            added += 1;
+          }
         }
         t += 1;
       }
       station += 1;
     }
-    NRFLog(s"registered \(added) event(s) in the audio event table");
+
+    // Every track answering is the only proof the registry finished. Half an answer means it is
+    // still decoding, so this returns and the poll comes back.
+    if missing > 0 {
+      return false;
+    }
+    this.m_eventsDone = true;
+    NRFLog(s"registered \(added) event(s) in the audio event table after \(this.m_polls) poll(s)");
+    return true;
   }
 
   private func HasEvent(events: ref<audioAudioEventArray>, name: CName) -> Bool {
@@ -243,7 +298,7 @@ public class NativeRadioFramework extends ScriptableService {
     let t: Int32 = 0;
     while t < tracks {
       let event: CName = NRF_StationTrack(index, t);
-      if IsNameValid(event) && NRFAudio.Duration(event) > 0.0 {
+      if IsNameValid(event) {
         ArrayPush(station.tracks, event);
         this.AddTitle(titles, index, t, event);
       }
@@ -251,7 +306,7 @@ public class NativeRadioFramework extends ScriptableService {
     }
 
     if ArraySize(station.tracks) == 0 {
-      NRFLog(s"\(name) has no playable tracks - not registered");
+      NRFLog(s"\(name) lists no tracks - not registered");
       return;
     }
 
