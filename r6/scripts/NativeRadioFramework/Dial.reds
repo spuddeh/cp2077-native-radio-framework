@@ -23,14 +23,19 @@ module NativeRadioFramework
 @if(ModuleExists("TweakXL"))
 import TweakXL.*
 
-// The framework's own atlas, used by a station that names no icon of its own.
+// The default icon for a station that names none, and it ships NOTHING: the game already has a
+// `no_station` glyph in the atlas its own dial uses, which is what a radio with nothing tuned in
+// shows. A station with no icon of its own gets that rather than a broken image.
+//
+// **A UIIcon record pointing at an atlas that does not exist fails silently** - the widget keeps
+// whatever it was showing, which reads as the previous station's logo.
 public class NRFIcons {
   public final static func FallbackAtlas() -> String {
-    return "nativeradioframework\\gui\\stations.inkatlas";
+    return "base\\gameplay\\gui\\common\\icons\\radiostations_icons.inkatlas";
   }
 
   public final static func FallbackPart() -> String {
-    return "nrf_default";
+    return "no_station";
   }
 }
 
