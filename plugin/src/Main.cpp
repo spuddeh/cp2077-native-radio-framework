@@ -824,6 +824,37 @@ void NRF_StationTrackKeyHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame
                 : 0;
 }
 
+// The 64-bit width of the same key. The game keeps its localization rows sorted by primaryKey and
+// finds one by binary search, and a key is registered under both widths so either resolves.
+void NRF_StationKeyHash64(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
+{
+    int32_t index = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    ++aFrame->code;
+    const Station* s = At(index);
+    if (aOut)
+    {
+        *aOut = s ? Fnv1a64(StationKey(s->name)) : 0;
+    }
+}
+
+void NRF_StationTrackKeyHash64(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
+{
+    int32_t index = -1;
+    int32_t track = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    RED4ext::GetParameter(aFrame, &track);
+    ++aFrame->code;
+    if (!aOut)
+    {
+        return;
+    }
+    const Station* s = At(index);
+    *aOut = (s && track >= 0 && track < static_cast<int32_t>(s->tracks.size()))
+                ? Fnv1a64(TrackKey(*s, track))
+                : 0;
+}
+
 void NRF_StationTrackTitle(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
@@ -892,6 +923,8 @@ void RegisterNatives()
     reg("NRF_StationTrackTitle", &NRF_StationTrackTitle, "String", 2);
     reg("NRF_StationKeyHash", &NRF_StationKeyHash, "Uint64", 1);
     reg("NRF_StationTrackKeyHash", &NRF_StationTrackKeyHash, "Uint64", 2);
+    reg("NRF_StationKeyHash64", &NRF_StationKeyHash64, "Uint64", 1);
+    reg("NRF_StationTrackKeyHash64", &NRF_StationTrackKeyHash64, "Uint64", 2);
 }
 } // namespace
 
