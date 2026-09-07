@@ -27,6 +27,7 @@ public native func NRF_StationTrackCount(index: Int32) -> Int32;
 public native func NRF_StationTrack(index: Int32, track: Int32) -> CName;
 public native func NRF_StationTrackDuration(index: Int32, track: Int32) -> Float;
 public native func NRF_StationTrackWwiseId(index: Int32, track: Int32) -> Uint32;
+public native func NRF_StationTrackTitle(index: Int32, track: Int32) -> String;
 public native func NRF_StationRecord(index: Int32) -> String;
 public native func NRF_StationSpeaker(index: Int32) -> String;
 
@@ -45,9 +46,9 @@ public func NRFSpeaker(name: String) -> audioRadioSpeakerType {
     case "PoliceDispatch": return audioRadioSpeakerType.PoliceDispatch;
     case "Kurtz": return audioRadioSpeakerType.Kurtz;
     case "Ash": return audioRadioSpeakerType.Ash;
-    case "None": return audioRadioSpeakerType.None;
+    case "Stanley": return audioRadioSpeakerType.Stanley;
   }
-  return audioRadioSpeakerType.Stanley;
+  return audioRadioSpeakerType.None;
 }
 
 public class NativeRadioFramework extends ScriptableService {
@@ -164,7 +165,6 @@ public class NativeRadioFramework extends ScriptableService {
       NRFLog("no station map in this metadata resource - nothing registered");
       return;
     }
-
     let i: Int32 = 0;
     while i < count {
       this.RegisterOne(cooked, map, i);
@@ -184,10 +184,9 @@ public class NativeRadioFramework extends ScriptableService {
 
     let station = new audioRadioStationMetadata();
     station.name = name;
-    // The DJ. NO vanilla station uses `None`: twelve of the fourteen dial stations are Stanley,
-    // Attitude Rock is Maximum Mike, Growl FM is Ash, and even police and kurtz name their own.
-    // So `None` is an untested value rather than the safe default it looks like, and Stanley is
-    // the default here.
+    // The DJ, and `None` is the default - a station with no speaker plays. Vanilla names one on
+    // every station (twelve are Stanley, Attitude Rock is Maximum Mike, Growl FM is Ash), so a
+    // station mod that wants a DJ asks for one by name in its manifest.
     station.speaker = NRFSpeaker(NRF_StationSpeaker(index));
 
     let tracks: Int32 = NRF_StationTrackCount(index);

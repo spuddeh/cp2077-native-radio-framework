@@ -13,10 +13,14 @@ Nothing in this folder is shared, so any number of station mods install side by 
 ```json
 {
   "name": "radio_station_20_hangouts",
-  "displayName": "Hangouts FM",
-  "icon": "",
+  "record": "RadioStation.HangoutsFM_905",
+  "speaker": "Stanley",
   "tracks": [
-    { "event": "mus_radio_20_hangouts_01", "duration": 187.474 },
+    {
+      "event": "mus_radio_20_hangouts_01",
+      "duration": 187.474,
+      "title": "Artist - Song Title"
+    },
     { "event": "mus_radio_20_hangouts_02", "duration": 165.818 }
   ]
 }
@@ -25,13 +29,25 @@ Nothing in this folder is shared, so any number of station mods install side by 
 | Field | What it is |
 | --- | --- |
 | `name` | The station's own CName. It must be unique across every installed station mod. |
-| `displayName` | Shown on the radio dial. |
-| `icon` | The station's dial icon. |
+| `record` | The `gamedataRadioStation_Record` carrying the dial name and icon. See below. |
+| `speaker` | Optional. The station's DJ, an `audioRadioSpeakerType` name. Defaults to `None`. |
 | `tracks[].event` | A Wwise event name, posted to play the track. |
 | `tracks[].duration` | The track's audible length in **seconds**. |
+| `tracks[].title` | Optional. The song title, shown as written. |
 
 **`duration` is not decoration.** The station schedules the next track against it, so a value that
 is too short cuts the song off and one that is too long leaves dead air.
+
+`speaker` names one of `Stanley`, `MaximumMike`, `Ash`, `Kurtz` or `PoliceDispatch`. Every vanilla
+station names one; a station without one plays.
+
+## Song titles
+
+`title` is the title as the player reads it, not a localization key. The framework puts it on
+screen directly, so nothing has to be shipped in an archive and no key has to be registered.
+
+A track with no `title` shows whatever the game would have shown, which for a custom event is
+nothing.
 
 ## The TweakDB record
 

@@ -67,6 +67,7 @@ struct Track
 {
     std::string event;
     float duration = 0.0f;  // seconds, the audible length
+    std::string title;      // the song title as it is shown, plain text, may be empty
 };
 
 struct Station
@@ -194,6 +195,7 @@ std::vector<Track> JsonTracks(const std::string& aText)
 
         Track track;
         track.event = JsonString(chunk, "event");
+        track.title = JsonString(chunk, "title");
         const size_t d = chunk.find("\"duration\"");
         if (d != std::string::npos)
         {
@@ -615,6 +617,30 @@ void NRF_StationTrackWwiseId(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame
     }
 }
 
+// The title is shown as written. A track with no title in its manifest returns an empty string
+// and the UI keeps the name it already had.
+void NRF_StationTrackTitle(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+{
+    int32_t index = -1;
+    int32_t track = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    RED4ext::GetParameter(aFrame, &track);
+    ++aFrame->code;
+    if (!aOut)
+    {
+        return;
+    }
+    *aOut = RED4ext::CString("");
+    if (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
+    {
+        const auto& tracks = g_stations[index].tracks;
+        if (track >= 0 && track < static_cast<int32_t>(tracks.size()))
+        {
+            *aOut = RED4ext::CString(tracks[track].title.c_str());
+        }
+    }
+}
+
 // The redscript half declares these inside `module NativeRadioFramework`, so the name it resolves
 // is module-qualified. Registering them bare fails script validation with "Missing native global
 // function", which stops every redscript mod on the machine from compiling - not just this one.
@@ -692,6 +718,14 @@ void RegisterNatives()
     wwise->AddParam("Int32", "track");
     wwise->SetReturnType("Uint32");
     rtti->RegisterFunction(wwise);
+
+    auto* title = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrackTitle", "NRF_StationTrackTitle",
+                                                   &NRF_StationTrackTitle);
+    title->flags.isNative = true;
+    title->AddParam("Int32", "index");
+    title->AddParam("Int32", "track");
+    title->SetReturnType("String");
+    rtti->RegisterFunction(title);
 }
 } // namespace
 
