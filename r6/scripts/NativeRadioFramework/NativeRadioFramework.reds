@@ -27,6 +27,7 @@ public native func NRF_StationTrackCount(index: Int32) -> Int32;
 public native func NRF_StationTrack(index: Int32, track: Int32) -> CName;
 public native func NRF_StationTrackDuration(index: Int32, track: Int32) -> Float;
 public native func NRF_StationTrackWwiseId(index: Int32, track: Int32) -> Uint32;
+public native func NRF_StationRecord(index: Int32) -> String;
 
 // A station needs three things and the plugin supplies the first. This adds the other two as the
 // cooked audio metadata loads:

@@ -72,8 +72,7 @@ struct Track
 struct Station
 {
     std::string name;         // the station CName, e.g. radio_station_20_hangouts
-    std::string displayName;  // shown on the dial, once the script layer lands
-    std::string icon;
+    std::string record;       // the TweakDB RadioStation record carrying its name, icon and dial slot
     std::vector<Track> tracks;
     std::string source;       // which manifest it came from, for logging
 };
@@ -294,8 +293,7 @@ void LoadManifests()
 
         Station station;
         station.name = JsonString(text, "name");
-        station.displayName = JsonString(text, "displayName");
-        station.icon = JsonString(text, "icon");
+        station.record = JsonString(text, "record");
         station.tracks = JsonTracks(text);
         station.source = entry.path().filename().string();
 
@@ -326,7 +324,8 @@ void LoadManifests()
         {
             Log(station.source + ": '" + station.name + "' with " +
                 std::to_string(station.tracks.size()) + " track(s)" +
-                (station.displayName.empty() ? "" : ", \"" + station.displayName + "\""));
+                (station.record.empty() ? ", NO record - it will not reach the dial"
+                                        : ", record " + station.record));
             g_stations.push_back(std::move(station));
         }
     }
@@ -544,6 +543,19 @@ void NRF_StationTrack(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4e
     }
 }
 
+void NRF_StationRecord(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+{
+    int32_t index = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    ++aFrame->code;
+    if (aOut)
+    {
+        *aOut = (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
+                    ? RED4ext::CString(g_stations[index].record.c_str())
+                    : RED4ext::CString("");
+    }
+}
+
 void NRF_StationTrackDuration(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t)
 {
     int32_t index = -1;
@@ -635,6 +647,13 @@ void RegisterNatives()
     track->AddParam("Int32", "track");
     track->SetReturnType("CName");
     rtti->RegisterFunction(track);
+
+    auto* record = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationRecord",
+                                                    "NRF_StationRecord", &NRF_StationRecord);
+    record->flags.isNative = true;
+    record->AddParam("Int32", "index");
+    record->SetReturnType("String");
+    rtti->RegisterFunction(record);
 
     auto* duration = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrackDuration", "NRF_StationTrackDuration",
                                                       &NRF_StationTrackDuration);
