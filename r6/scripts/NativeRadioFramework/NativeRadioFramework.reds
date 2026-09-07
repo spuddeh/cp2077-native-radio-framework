@@ -33,6 +33,8 @@ public native func NRF_StationTrack(index: Int32, track: Int32) -> CName;
 public native func NRF_StationTrackKey(index: Int32, track: Int32) -> CName;
 public native func NRF_StationTrackFile(index: Int32, track: Int32) -> String;
 public native func NRF_StationTrackTitle(index: Int32, track: Int32) -> String;
+public native func NRF_StationKeyHash(index: Int32) -> Uint64;
+public native func NRF_StationTrackKeyHash(index: Int32, track: Int32) -> Uint64;
 
 // A station is assembled out of the systems the game already has, in this order:
 //
@@ -344,6 +346,7 @@ public class NativeRadioFramework extends ScriptableService {
     let row: audioRadioTrack;
     row.trackEventName = event;
     row.localizationKey = NRF_StationTrackKey(station, track);
+    row.primaryLocKey = NRF_StationTrackKeyHash(station, track);
     row.isStreamingFriendly = true;
     ArrayPush(titles.radioTracks, row);
   }
@@ -381,11 +384,13 @@ public class NativeRadioFramework extends ScriptableService {
     let station: Int32 = 0;
     let count: Int32 = NRF_StationCount();
     while station < count {
-      added += this.AddText(screens, NRF_StationKey(station), NRF_StationDisplayName(station));
+      added += this.AddText(screens, NRF_StationKey(station), NRF_StationKeyHash(station),
+                            NRF_StationDisplayName(station));
       let tracks: Int32 = NRF_StationTrackCount(station);
       let t: Int32 = 0;
       while t < tracks {
         added += this.AddText(screens, NRF_StationTrackKey(station, t),
+                              NRF_StationTrackKeyHash(station, t),
                               NRF_StationTrackTitle(station, t));
         t += 1;
       }
@@ -394,13 +399,17 @@ public class NativeRadioFramework extends ScriptableService {
     NRFLog(s"registered \(added) string(s) in onscreens");
   }
 
-  private func AddText(screens: ref<localizationPersistenceOnScreenEntries>, key: CName,
+  // **A row whose primaryKey is 0 is indexed by nothing and resolves for nothing.** The game looks
+  // a key up by its FNV1a32, so the hash is supplied rather than left for something else to compute.
+  // Both variants are filled: a reader that asks for the male one must not get an empty string.
+  private func AddText(screens: ref<localizationPersistenceOnScreenEntries>, key: CName, hash: Uint64,
                        text: String) -> Int32 {
-    if !IsNameValid(key) || StrLen(text) == 0 { return 0; }
+    if !IsNameValid(key) || hash == 0ul || StrLen(text) == 0 { return 0; }
     let row = new localizationPersistenceOnScreenEntry();
-    row.primaryKey = 0ul;
+    row.primaryKey = hash;
     row.secondaryKey = NameToString(key);
     row.femaleVariant = text;
+    row.maleVariant = text;
     ArrayPush(screens.entries, row);
     return 1;
   }

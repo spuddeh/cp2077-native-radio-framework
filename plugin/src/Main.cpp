@@ -39,7 +39,8 @@ constexpr uint32_t kHashResolve     = 4164035396;  // 0x4fe73c,  name -> index, 
 constexpr uint32_t kHashIndexToName = 2956468185;  // 0x6bafe0,  index -> name, bound is an imm8
 constexpr uint32_t kHashVehicleSet  = 4148435735;  // 0x25fdea8, the vehicle receiver's set-station
 constexpr uint32_t kHashNameTable   = 1433472801;  // 0x3586de0, a SECOND 14-slot CName array
-constexpr uint32_t kHashNameReader  = 2735481579;  // 0x1c55420, its only reader
+constexpr uint32_t kHashNameReader  = 2735481579;  // 0x1c55420, one reader
+constexpr uint32_t kHashNameReader2 = 131147224;   // 0x1cb3320, the OTHER reader - the Radioport's
 
 // --- patch sites, as offsets from those function starts ----------------------------------------
 constexpr size_t kResolveLeaOpcode = 0x0B;  // 4C 8D 05   lea r8, [rip+disp32]
@@ -77,6 +78,29 @@ constexpr uint8_t kMovEaxImm[] = {0xB8, 0x25, 0x49, 0x92, 0x24};
 constexpr uint8_t kImulEax14[] = {0x6B, 0xC0, 0x0E};
 constexpr uint8_t kSubR8Eax[] = {0x44, 0x2B, 0xC0};
 constexpr uint8_t kCmpR8[] = {0x41, 0x83, 0xF8};
+
+// The SECOND reader of the same name table, at 0x1cb3320, offsets from its own start. It is the
+// Radioport's, it wraps the index the same way, and it was missed because it reaches the table as
+// `[r14 + rcx*8 + disp32]` with r14 holding the image base - not the `lea` form the first uses.
+//
+// **An `inc qword [rdi]` sits INSIDE the division**, at +0x62, so the block cannot be filled with
+// nops in one run without deleting a live side effect. Two runs skip over it.
+constexpr size_t kName2MovEax   = 0x5D;  // B8 25 49 92 24   mov eax, 0x24924925
+constexpr size_t kName2Keep     = 0x62;  // 48 FF 07         inc qword [rdi]   <- NOT ours
+constexpr size_t kName2DivFrom  = 0x65;  // F7 E1            mul ecx
+constexpr size_t kName2DivTo    = 0x77;  // one past `sub ecx, eax`
+constexpr size_t kName2Imul     = 0x72;  // 6B C0 0E         imul eax, eax, 14
+constexpr size_t kName2Sub      = 0x75;  // 2B C8            sub ecx, eax
+constexpr size_t kName2Cmp      = 0x77;  // 83 F9            cmp ecx, imm8
+constexpr size_t kName2CmpImm   = 0x79;
+constexpr size_t kName2Mov      = 0x7C;  // 49 8B 9C CE      mov rbx, [r14+rcx*8+disp32]
+constexpr size_t kName2MovDisp  = 0x80;
+
+constexpr uint8_t kIncRdi[] = {0x48, 0xFF, 0x07};
+constexpr uint8_t kMulEcx[] = {0xF7, 0xE1};
+constexpr uint8_t kSubEcxEax[] = {0x2B, 0xC8};
+constexpr uint8_t kCmpEcx[] = {0x83, 0xF9};
+constexpr uint8_t kMovR14Rcx[] = {0x49, 0x8B, 0x9C, 0xCE};
 
 constexpr uint8_t kLeaR8[]  = {0x4C, 0x8D, 0x05};
 constexpr uint8_t kLeaRdx[] = {0x48, 0x8D, 0x15};
@@ -159,6 +183,19 @@ uintptr_t ResolveByHash(uint32_t aHash)
                        : nullptr;
     }();
     return resolve ? resolve(aHash) : 0;
+}
+
+// A localization entry with a primaryKey of 0 is not looked up by anything. The game resolves a
+// key by its FNV1a32, so the framework supplies that rather than leaving the row unindexed.
+uint32_t Fnv1a32(const std::string& aText)
+{
+    uint32_t hash = 2166136261u;
+    for (unsigned char c : aText)
+    {
+        hash ^= c;
+        hash *= 16777619u;
+    }
+    return hash;
 }
 
 uint64_t Fnv1a64(const std::string& aText)
@@ -426,8 +463,10 @@ void PatchRoster()
     const auto vehicleSet = reinterpret_cast<uint8_t*>(ResolveByHash(kHashVehicleSet));
     const auto nameTable = reinterpret_cast<uint64_t*>(ResolveByHash(kHashNameTable));
     const auto nameReader = reinterpret_cast<uint8_t*>(ResolveByHash(kHashNameReader));
+    const auto nameReader2 = reinterpret_cast<uint8_t*>(ResolveByHash(kHashNameReader2));
 
-    if (!roster || !resolve || !indexToName || !vehicleSet || !nameTable || !nameReader)
+    if (!roster || !resolve || !indexToName || !vehicleSet || !nameTable || !nameReader ||
+        !nameReader2)
     {
         Log("address resolution failed - is RED4ext's address database present for this build?");
         return;
@@ -467,6 +506,13 @@ void PatchRoster()
         {nameReader + kNameSub, kSubR8Eax, sizeof(kSubR8Eax), "nameReader: sub r8d, eax"},
         {nameReader + kNameCmp, kCmpR8, sizeof(kCmpR8), "nameReader: cmp r8d, imm8"},
         {nameReader + kNameLea, kLeaRdx, sizeof(kLeaRdx), "nameReader: lea rdx, [rip+disp32]"},
+        {nameReader2 + kName2MovEax, kMovEaxImm, sizeof(kMovEaxImm), "nameReader2: mov eax, 0x24924925"},
+        {nameReader2 + kName2Keep, kIncRdi, sizeof(kIncRdi), "nameReader2: inc qword [rdi]"},
+        {nameReader2 + kName2DivFrom, kMulEcx, sizeof(kMulEcx), "nameReader2: mul ecx"},
+        {nameReader2 + kName2Imul, kImulEax14, sizeof(kImulEax14), "nameReader2: imul eax, eax, 14"},
+        {nameReader2 + kName2Sub, kSubEcxEax, sizeof(kSubEcxEax), "nameReader2: sub ecx, eax"},
+        {nameReader2 + kName2Cmp, kCmpEcx, sizeof(kCmpEcx), "nameReader2: cmp ecx, imm8"},
+        {nameReader2 + kName2Mov, kMovR14Rcx, sizeof(kMovR14Rcx), "nameReader2: mov rbx, [r14+rcx*8+disp32]"},
     };
     for (const auto& c : checks)
     {
@@ -477,9 +523,10 @@ void PatchRoster()
         }
     }
     if (resolve[kResolveCmpImm] != kVanillaCount || indexToName[kIndexCmpImm] != kVanillaCount - 1 ||
-        vehicleSet[kVehicleCmpImm] != kVanillaCount || nameReader[kNameCmpImm] != kVanillaCount - 1)
+        vehicleSet[kVehicleCmpImm] != kVanillaCount || nameReader[kNameCmpImm] != kVanillaCount - 1 ||
+        nameReader2[kName2CmpImm] != kVanillaCount - 1)
     {
-        Log("bounds are not the expected 14/13/14/13 - already patched, or a different build. Abandoned.");
+        Log("bounds are not the expected 14/13/14/13/13 - already patched, or a different build. Abandoned.");
         return;
     }
 
@@ -538,7 +585,28 @@ void PatchRoster()
         0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
         0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
 
+    // The second reader addresses the table from the image base, not from itself, so its
+    // displacement is measured from there.
+    const auto imageBase = reinterpret_cast<uintptr_t>(GetModuleHandleW(nullptr));
+    const int64_t fromBase = static_cast<int64_t>(reinterpret_cast<uintptr_t>(names)) -
+                             static_cast<int64_t>(imageBase);
+    if (!imageBase || fromBase > INT32_MAX || fromBase < INT32_MIN)
+    {
+        Log("the new name table is out of 32-bit reach of the image base - nothing patched");
+        return;
+    }
+    const int32_t dispNames2 = static_cast<int32_t>(fromBase);
+
+    const uint8_t nops2a[kName2Keep - kName2MovEax] = {0x90, 0x90, 0x90, 0x90, 0x90};
+    const uint8_t nops2b[kName2DivTo - kName2DivFrom] = {
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90,
+        0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90, 0x90};
+
     const bool ok = WriteBytes(resolve + kResolveLeaDisp, &dispResolve, sizeof(dispResolve)) &&
+                    WriteBytes(nameReader2 + kName2MovEax, nops2a, sizeof(nops2a)) &&
+                    WriteBytes(nameReader2 + kName2DivFrom, nops2b, sizeof(nops2b)) &&
+                    WriteBytes(nameReader2 + kName2CmpImm, &boundLast, 1) &&
+                    WriteBytes(nameReader2 + kName2MovDisp, &dispNames2, sizeof(dispNames2)) &&
                     WriteBytes(indexToName + kIndexLeaDisp, &dispIndex, sizeof(dispIndex)) &&
                     WriteBytes(nameReader + kNameLeaDisp, &dispNames, sizeof(dispNames)) &&
                     WriteBytes(nameReader + kNameDivFrom, nops, sizeof(nops)) &&
@@ -726,6 +794,36 @@ void NRF_StationTrackFile(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, R
     OutString(aOut, std::string());
 }
 
+// The value a localization row is INDEXED by. A row whose primaryKey is 0 resolves for nothing.
+void NRF_StationKeyHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
+{
+    int32_t index = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    ++aFrame->code;
+    const Station* s = At(index);
+    if (aOut)
+    {
+        *aOut = s ? Fnv1a32(StationKey(s->name)) : 0;
+    }
+}
+
+void NRF_StationTrackKeyHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
+{
+    int32_t index = -1;
+    int32_t track = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    RED4ext::GetParameter(aFrame, &track);
+    ++aFrame->code;
+    if (!aOut)
+    {
+        return;
+    }
+    const Station* s = At(index);
+    *aOut = (s && track >= 0 && track < static_cast<int32_t>(s->tracks.size()))
+                ? Fnv1a32(TrackKey(*s, track))
+                : 0;
+}
+
 void NRF_StationTrackTitle(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
@@ -792,6 +890,8 @@ void RegisterNatives()
     reg("NRF_StationTrackKey", &NRF_StationTrackKey, "CName", 2);
     reg("NRF_StationTrackFile", &NRF_StationTrackFile, "String", 2);
     reg("NRF_StationTrackTitle", &NRF_StationTrackTitle, "String", 2);
+    reg("NRF_StationKeyHash", &NRF_StationKeyHash, "Uint64", 1);
+    reg("NRF_StationTrackKeyHash", &NRF_StationTrackKeyHash, "Uint64", 2);
 }
 } // namespace
 

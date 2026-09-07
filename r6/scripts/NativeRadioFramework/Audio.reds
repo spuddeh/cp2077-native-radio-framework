@@ -18,13 +18,16 @@ module NativeRadioFramework
 @if(ModuleExists("AudioXL"))
 import AudioXL.*
 
-// Radio music follows the Vehicle Radio slider, which is the mixer vanilla stations use.
+// **`mod_sfx_radio` is the GAME's own radio routing, and a station must use it.** An `axl_*` type is
+// a 2D sound on a mixer: nothing owns it, so the radio system cannot stop it, a car cannot take it
+// over from the Radioport, and it is audible at a world device whether or not that device plays.
+// A station is a voice on the radio's own emitter, never a sound played alongside it.
 public class NRFAudio {
 
   @if(ModuleExists("AudioXL"))
   public final static func Register(event: CName, file: String) -> Bool {
     // Streamed rather than held in memory: a station is tens of minutes of audio.
-    return AudioXLNative.RegisterSoundEx(event, n"axl_radio_2d", file, 1.0, 0.0, 0.0,
+    return AudioXLNative.RegisterSoundEx(event, n"mod_sfx_radio", file, 1.0, 0.0, 0.0,
                                          false, 0.0, 0.0, 0.0, 0.0, 0.0, true);
   }
 
