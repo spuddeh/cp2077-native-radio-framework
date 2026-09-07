@@ -67,9 +67,12 @@ public class NRFDial {
 // index: the index MUST equal the roster slot the plugin assigned, and that depends on how many
 // station mods are installed and in what order they were found.
 
+// **A record is created from a ScriptableTweak, never a ScriptableService.** OnApply is the point
+// TweakXL extends TweakDB; anything written before that is discarded when TweakDB loads, which
+// leaves the station playing but absent from every list that reads a record.
 @if(ModuleExists("TweakXL"))
-public class NRFRecords extends ScriptableService {
-  private cb func OnLoad() {
+public class NRFRecords extends ScriptableTweak {
+  protected cb func OnApply() -> Void {
     let count: Int32 = NRF_StationCount();
     let i: Int32 = 0;
     while i < count {
@@ -95,7 +98,7 @@ public class NRFRecords extends ScriptableService {
       atlas = NRFIcons.FallbackAtlas();
     }
 
-    TweakDBManager.CreateRecord(StringToName(iconName), n"gamedataUIIcon_Record");
+    let madeIcon: Bool = TweakDBManager.CreateRecord(StringToName(iconName), n"gamedataUIIcon_Record");
     TweakDBManager.SetFlat(TDBID.Create(iconName + ".atlasPartName"), ToVariant(StringToName(part)));
     TweakDBManager.SetFlat(TDBID.Create(iconName + ".atlasResourcePath"), ToVariant(atlas));
     TweakDBManager.UpdateRecord(iconId);
@@ -104,18 +107,20 @@ public class NRFRecords extends ScriptableService {
     // and the popup compares the two resolved strings, so both sides have to land on the same text.
     let recordName: String = NRFDial.RecordName(slot);
     let recordId: TweakDBID = TDBID.Create(recordName);
-    TweakDBManager.CreateRecord(StringToName(recordName), n"gamedataRadioStation_Record");
+    let madeStation: Bool = TweakDBManager.CreateRecord(StringToName(recordName), n"gamedataRadioStation_Record");
     TweakDBManager.SetFlat(TDBID.Create(recordName + ".displayName"),
                            ToVariant(NRF_StationDisplayName(slot)));
     TweakDBManager.SetFlat(TDBID.Create(recordName + ".icon"), ToVariant(iconId));
     TweakDBManager.SetFlat(TDBID.Create(recordName + ".index"), ToVariant(14 + slot));
     TweakDBManager.UpdateRecord(recordId);
+
+    NRFLog(s"\(recordName): record \(madeStation), icon \(madeIcon), index \(14 + slot)");
   }
 }
 
 // Without TweakXL there are no records, so a custom station plays but never reaches the dial.
 @if(!ModuleExists("TweakXL"))
-public class NRFRecords extends ScriptableService {
+public class NRFRecordsMissing extends ScriptableService {
   private cb func OnLoad() {
     if NRF_StationCount() > 0 {
       NRFLog("TweakXL is absent - stations play but cannot appear on the dial");

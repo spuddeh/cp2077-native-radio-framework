@@ -90,12 +90,20 @@ public class NativeRadioFramework extends ScriptableService {
     cb.RegisterCallback(n"Resource/Load", this, n"OnOnScreens")
       .AddTarget(ResourceTarget.Path(r"base\\localization\\en-us\\onscreens\\onscreens.json"));
 
+    // There is no DelaySystem before a session exists, so the retry cannot run on a timer alone.
+    // A session becoming ready is both a retry opportunity and the point a timer starts working.
+    cb.RegisterCallback(n"Session/Ready", this, n"OnSessionReady");
+
     // Resource/Load only fires while a resource is loading, so it never arrives for one another
     // mod has already pulled in. Ask the depot as well, and make the work safe to run twice.
     let depot = GameInstance.GetResourceDepot();
     this.Watch(depot, r"base\\sound\\metadata\\cooked_metadata.audio_metadata", n"OnCookedReady");
     this.Watch(depot, r"base\\sound\\event\\eventsmetadata.json", n"OnEventsReady");
     this.Watch(depot, r"base\\localization\\en-us\\onscreens\\onscreens.json", n"OnOnScreensReady");
+  }
+
+  private cb func OnSessionReady(event: ref<GameSessionEvent>) {
+    this.Poll();
   }
 
   private func Watch(depot: ref<ResourceDepot>, path: ResRef, callback: CName) -> Void {
@@ -180,8 +188,13 @@ public class NativeRadioFramework extends ScriptableService {
       return;
     }
 
+    // Before a session exists there is no DelaySystem. Session/Ready calls back in, so a failure
+    // to schedule here is a wait rather than a dead end.
     let delay = GameInstance.GetDelaySystem(GetGameInstance());
-    if !IsDefined(delay) { return; }
+    if !IsDefined(delay) {
+      NRFLog(s"no DelaySystem yet - waiting for the session (poll \(this.m_polls))");
+      return;
+    }
     let again = new NRFPoll();
     again.service = this;
     delay.DelayCallback(again, 0.5);
