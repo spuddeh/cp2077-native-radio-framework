@@ -25,6 +25,8 @@ public native func NRF_StationCount() -> Int32;
 public native func NRF_StationName(index: Int32) -> CName;
 public native func NRF_StationTrackCount(index: Int32) -> Int32;
 public native func NRF_StationTrack(index: Int32, track: Int32) -> CName;
+public native func NRF_StationTrackDuration(index: Int32, track: Int32) -> Float;
+public native func NRF_StationTrackWwiseId(index: Int32, track: Int32) -> Uint32;
 
 // A station needs three things and the plugin supplies the first. This adds the other two as the
 // cooked audio metadata loads:
@@ -39,6 +41,7 @@ public class NativeRadioFramework extends ScriptableService {
 
   private let m_tokens: array<ref<ResourceToken>>;
   private let m_done: Bool;
+  private let m_eventsDone: Bool;
 
   private cb func OnLoad() {
     GameInstance.GetCallbackSystem()
@@ -47,12 +50,75 @@ public class NativeRadioFramework extends ScriptableService {
 
     // Resource/Load only fires while a resource is loading, so it never arrives for one another
     // mod has already pulled in. Ask the depot as well, and make the work safe to run twice.
-    let cooked = GameInstance.GetResourceDepot()
-      .LoadResource(r"base\\sound\\metadata\\cooked_metadata.audio_metadata");
+    GameInstance.GetCallbackSystem()
+      .RegisterCallback(n"Resource/Load", this, n"OnEventsMetadata")
+      .AddTarget(ResourceTarget.Path(r"base\\sound\\event\\eventsmetadata.json"));
+
+    let depot = GameInstance.GetResourceDepot();
+
+    let cooked = depot.LoadResource(r"base\\sound\\metadata\\cooked_metadata.audio_metadata");
     if IsDefined(cooked) {
       ArrayPush(this.m_tokens, cooked);
       cooked.RegisterCallback(this, n"OnCookedReady");
     }
+
+    let events = depot.LoadResource(r"base\\sound\\event\\eventsmetadata.json");
+    if IsDefined(events) {
+      ArrayPush(this.m_tokens, events);
+      events.RegisterCallback(this, n"OnEventsReady");
+    }
+  }
+
+  private cb func OnEventsMetadata(event: ref<ResourceEvent>) {
+    this.RegisterEvents(event.GetResource() as JsonResource);
+  }
+
+  private cb func OnEventsReady(token: ref<ResourceToken>) {
+    this.RegisterEvents(token.GetResource() as JsonResource);
+  }
+
+  // An event present in a loaded bank but absent from this table cannot be posted by name, and
+  // fails silently. The duration here is what the station schedules the next track against.
+  private func RegisterEvents(resource: ref<JsonResource>) -> Void {
+    if !IsDefined(resource) || this.m_eventsDone { return; }
+    let events = resource.root as audioAudioEventArray;
+    if !IsDefined(events) { return; }
+    this.m_eventsDone = true;
+
+    let added: Int32 = 0;
+    let station: Int32 = 0;
+    let count: Int32 = NRF_StationCount();
+    while station < count {
+      let tracks: Int32 = NRF_StationTrackCount(station);
+      let t: Int32 = 0;
+      while t < tracks {
+        let name: CName = NRF_StationTrack(station, t);
+        let duration: Float = NRF_StationTrackDuration(station, t);
+        if IsNameValid(name) && duration > 0.0 && !this.HasEvent(events, name) {
+          let row: audioAudioEventMetadataArrayElement;
+          row.redId = name;
+          row.wwiseId = NRF_StationTrackWwiseId(station, t);
+          row.isLooping = false;
+          row.maxAttenuation = 0.0;
+          row.minDuration = duration;
+          row.maxDuration = duration;
+          ArrayPush(events.events, row);
+          added += 1;
+        }
+        t += 1;
+      }
+      station += 1;
+    }
+    NRFLog(s"registered \(added) event(s) in the audio event table");
+  }
+
+  private func HasEvent(events: ref<audioAudioEventArray>, name: CName) -> Bool {
+    let i: Int32 = 0;
+    while i < ArraySize(events.events) {
+      if Equals(events.events[i].redId, name) { return true; }
+      i += 1;
+    }
+    return false;
   }
 
   private cb func OnCookedMetadata(event: ref<ResourceEvent>) {

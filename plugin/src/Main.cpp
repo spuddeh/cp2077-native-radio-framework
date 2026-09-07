@@ -23,6 +23,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <cctype>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
@@ -60,13 +61,21 @@ constexpr uint8_t kCmpEdi[] = {0x83, 0xFF};
 constexpr int kVanillaCount = 14;
 constexpr int kMaxStations = 127;  // both bounds are 8-bit immediates
 
+// An event has to be registered in eventsmetadata before the station can post it by name, and the
+// duration there is what the station schedules the next track against. Both come from the manifest.
+struct Track
+{
+    std::string event;
+    float duration = 0.0f;  // seconds, the audible length
+};
+
 struct Station
 {
     std::string name;         // the station CName, e.g. radio_station_20_hangouts
     std::string displayName;  // shown on the dial, once the script layer lands
     std::string icon;
-    std::vector<std::string> tracks;  // event CNames, each registered by AudioXL or already vanilla
-    std::string source;               // which manifest it came from, for logging
+    std::vector<Track> tracks;
+    std::string source;       // which manifest it came from, for logging
 };
 
 std::vector<Station> g_stations;
@@ -93,6 +102,20 @@ uintptr_t ResolveByHash(uint32_t aHash)
                        : nullptr;
     }();
     return resolve ? resolve(aHash) : 0;
+}
+
+// Wwise ids are FNV-1 32-bit of the lowercased name - multiply then xor, the opposite order to the
+// FNV-1a used for CNames. Getting the two the wrong way round produces an id that resolves to
+// nothing, silently.
+uint32_t Fnv1_32(const std::string& aText)
+{
+    uint32_t hash = 2166136261u;
+    for (unsigned char c : aText)
+    {
+        hash *= 16777619u;
+        hash ^= static_cast<unsigned char>(std::tolower(c));
+    }
+    return hash;
 }
 
 uint64_t Fnv1a64(const std::string& aText)
@@ -136,6 +159,57 @@ std::string JsonString(const std::string& aText, const std::string& aKey)
     }
     const size_t close = aText.find('"', open + 1);
     return close == std::string::npos ? std::string() : aText.substr(open + 1, close - open - 1);
+}
+
+// tracks: [ { "event": "...", "duration": 0.0 }, ... ]
+std::vector<Track> JsonTracks(const std::string& aText)
+{
+    std::vector<Track> out;
+    size_t at = aText.find("\"tracks\"");
+    if (at == std::string::npos)
+    {
+        return out;
+    }
+    const size_t open = aText.find('[', at);
+    const size_t close = aText.find(']', open == std::string::npos ? at : open);
+    if (open == std::string::npos || close == std::string::npos)
+    {
+        return out;
+    }
+
+    size_t cursor = open;
+    while (true)
+    {
+        const size_t objOpen = aText.find('{', cursor);
+        if (objOpen == std::string::npos || objOpen > close)
+        {
+            break;
+        }
+        const size_t objClose = aText.find('}', objOpen);
+        if (objClose == std::string::npos || objClose > close)
+        {
+            break;
+        }
+        const std::string chunk = aText.substr(objOpen, objClose - objOpen + 1);
+
+        Track track;
+        track.event = JsonString(chunk, "event");
+        const size_t d = chunk.find("\"duration\"");
+        if (d != std::string::npos)
+        {
+            const size_t colon = chunk.find(':', d);
+            if (colon != std::string::npos)
+            {
+                track.duration = static_cast<float>(std::atof(chunk.c_str() + colon + 1));
+            }
+        }
+        if (!track.event.empty() && track.duration > 0.0f)
+        {
+            out.push_back(track);
+        }
+        cursor = objClose + 1;
+    }
+    return out;
 }
 
 std::vector<std::string> JsonStringArray(const std::string& aText, const std::string& aKey)
@@ -222,7 +296,7 @@ void LoadManifests()
         station.name = JsonString(text, "name");
         station.displayName = JsonString(text, "displayName");
         station.icon = JsonString(text, "icon");
-        station.tracks = JsonStringArray(text, "tracks");
+        station.tracks = JsonTracks(text);
         station.source = entry.path().filename().string();
 
         if (station.name.empty())
@@ -232,7 +306,8 @@ void LoadManifests()
         }
         if (station.tracks.empty())
         {
-            Log(station.source + ": station '" + station.name + "' lists no tracks - skipped");
+            Log(station.source + ": station '" + station.name +
+                "' lists no usable tracks - each needs an \"event\" and a non-zero \"duration\" - skipped");
             continue;
         }
 
@@ -250,7 +325,8 @@ void LoadManifests()
         if (!duplicate)
         {
             Log(station.source + ": '" + station.name + "' with " +
-                std::to_string(station.tracks.size()) + " track(s)");
+                std::to_string(station.tracks.size()) + " track(s)" +
+                (station.displayName.empty() ? "" : ", \"" + station.displayName + "\""));
             g_stations.push_back(std::move(station));
         }
     }
@@ -463,7 +539,51 @@ void NRF_StationTrack(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4e
         const auto& tracks = g_stations[index].tracks;
         if (track >= 0 && track < static_cast<int32_t>(tracks.size()))
         {
-            *aOut = RED4ext::CName(tracks[track].c_str());
+            *aOut = RED4ext::CName(tracks[track].event.c_str());
+        }
+    }
+}
+
+void NRF_StationTrackDuration(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t)
+{
+    int32_t index = -1;
+    int32_t track = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    RED4ext::GetParameter(aFrame, &track);
+    ++aFrame->code;
+    if (!aOut)
+    {
+        return;
+    }
+    *aOut = 0.0f;
+    if (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
+    {
+        const auto& tracks = g_stations[index].tracks;
+        if (track >= 0 && track < static_cast<int32_t>(tracks.size()))
+        {
+            *aOut = tracks[track].duration;
+        }
+    }
+}
+
+void NRF_StationTrackWwiseId(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint32_t* aOut, int64_t)
+{
+    int32_t index = -1;
+    int32_t track = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    RED4ext::GetParameter(aFrame, &track);
+    ++aFrame->code;
+    if (!aOut)
+    {
+        return;
+    }
+    *aOut = 0;
+    if (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
+    {
+        const auto& tracks = g_stations[index].tracks;
+        if (track >= 0 && track < static_cast<int32_t>(tracks.size()))
+        {
+            *aOut = Fnv1_32(tracks[track].event);
         }
     }
 }
@@ -496,6 +616,22 @@ void RegisterNatives()
     track->AddParam("Int32", "track");
     track->SetReturnType("CName");
     rtti->RegisterFunction(track);
+
+    auto* duration = RED4ext::CGlobalFunction::Create("NRF_StationTrackDuration", "NRF_StationTrackDuration",
+                                                      &NRF_StationTrackDuration);
+    duration->flags.isNative = true;
+    duration->AddParam("Int32", "index");
+    duration->AddParam("Int32", "track");
+    duration->SetReturnType("Float");
+    rtti->RegisterFunction(duration);
+
+    auto* wwise = RED4ext::CGlobalFunction::Create("NRF_StationTrackWwiseId", "NRF_StationTrackWwiseId",
+                                                   &NRF_StationTrackWwiseId);
+    wwise->flags.isNative = true;
+    wwise->AddParam("Int32", "index");
+    wwise->AddParam("Int32", "track");
+    wwise->SetReturnType("Uint32");
+    rtti->RegisterFunction(wwise);
 }
 } // namespace
 
