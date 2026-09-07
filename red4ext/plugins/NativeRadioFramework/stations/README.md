@@ -33,6 +33,19 @@ Nothing in this folder is shared, so any number of station mods install side by 
 **`duration` is not decoration.** The station schedules the next track against it, so a value that
 is too short cuts the song off and one that is too long leaves dead air.
 
+## The TweakDB record
+
+`record` names a `gamedataRadioStation_Record` your mod ships through TweakXL, carrying the
+station's `displayName`, `icon` and `index`. The display name is where the frequency lives - the
+game has no separate field for it.
+
+**Do not try to pick your own `index`.** The value in your yaml is overwritten at load. A station's
+index has to equal the roster slot the framework gave it, which depends on how many station mods
+are installed and in what order they were found - so no mod can know its own index in advance. The
+popup plays whatever `Index()` returns, so a wrong one plays the wrong station.
+
+Put any valid number in the yaml to satisfy the record type. `14` is as good as any.
+
 ## The audio
 
 This framework does not load, decode or stream sound. A track's event has to exist in a soundbank

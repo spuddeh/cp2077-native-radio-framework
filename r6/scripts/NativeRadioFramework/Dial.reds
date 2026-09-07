@@ -21,6 +21,43 @@
 
 module NativeRadioFramework
 
+@if(ModuleExists("TweakXL"))
+import TweakXL.*
+
+// The record's `index` is what the vehicle radio popup plays: it calls
+// `SendRadioEvent(true, true, data.m_record.Index())` and compares the current station against it.
+// So a station's index MUST equal the roster slot the plugin gave it, and that slot depends on how
+// many station mods are installed and in what order they were discovered.
+//
+// A station mod therefore cannot know its own index when it writes its yaml. The framework assigns
+// it here instead, and whatever the yaml says is overwritten.
+@if(ModuleExists("TweakXL"))
+public class NRFIndex extends ScriptableService {
+  private cb func OnLoad() {
+    let count: Int32 = NRF_StationCount();
+    let i: Int32 = 0;
+    while i < count {
+      let path: String = NRF_StationRecord(i);
+      if StrLen(path) > 0 {
+        let slot: Int32 = 14 + i;
+        TweakDBManager.SetFlat(TDBID.Create(path + ".index"), ToVariant(slot));
+        TweakDBManager.UpdateRecord(TDBID.Create(path));
+        NRFLog(s"\(path) index set to \(slot)");
+      }
+      i += 1;
+    }
+  }
+}
+
+// Without TweakXL a station keeps whatever index its yaml declared, which is only correct when it
+// is the sole station installed. Its record could not have been created without TweakXL either.
+@if(!ModuleExists("TweakXL"))
+public class NRFIndex extends ScriptableService {
+  private cb func OnLoad() {
+    NRFLog("TweakXL is absent - station indices are left as declared, which breaks with more than one station mod");
+  }
+}
+
 public class NRFDial {
   // The station's own enum value, or -1 for a vanilla one.
   public final static func Slot(station: Int32) -> Int32 {
@@ -53,6 +90,7 @@ public final static func GetStationsCount() -> Int32 {
 public final static func GetStationName(radioStationType: ERadioStationList) -> CName {
   let slot: Int32 = NRFDial.Slot(EnumInt(radioStationType));
   if slot >= 0 {
+    NRFLog(s"GetStationName(\(EnumInt(radioStationType))) -> \(NRF_StationName(slot))");
     return NRF_StationName(slot);
   }
   return wrappedMethod(radioStationType);
@@ -124,7 +162,23 @@ public final static func GetNextStationPocketRadio(currentIndex: Int32) -> ERadi
 }
 
 // --- the vehicle radio list ----------------------------------------------------------------------
-// Vanilla pushes fifteen literal record ids. Appending is enough; the popup sorts by the record.
+// The popup shows this array in order, and vanilla pushes its fifteen in ascending frequency:
+// 88.9, 89.3, 89.7, 91.9 and so on, after No Station. So a custom station is inserted at its
+// frequency rather than appended, or it sits at the bottom of a dial that is otherwise a real dial.
+//
+// The frequency is the front of the display name - the game has no field for it.
+
+public class NRFFreq {
+  public final static func Of(record: wref<RadioStation_Record>) -> Float {
+    if !IsDefined(record) { return -1.0; }
+    let head: String;
+    let tail: String;
+    if !StrSplitFirst(GetLocalizedText(record.DisplayName()), " ", head, tail) {
+      return -1.0;
+    }
+    return StringToFloat(head, -1.0);
+  }
+}
 
 @wrapMethod(VehiclesManagerDataHelper)
 public final static func GetRadioStations(player: ref<GameObject>) -> array<ref<IScriptable>> {
@@ -139,10 +193,50 @@ public final static func GetRadioStations(player: ref<GameObject>) -> array<ref<
       if IsDefined(record) {
         let data = new RadioListItemData();
         data.m_record = record;
-        ArrayPush(list, data);
+
+        let ours: Float = NRFFreq.Of(record);
+        let at: Int32 = -1;
+        let j: Int32 = 0;
+        while j < ArraySize(list) {
+          let row = list[j] as RadioListItemData;
+          // No Station has no frequency and parses as -1, so it always stays first.
+          if at < 0 && IsDefined(row) && NRFFreq.Of(row.m_record) > ours {
+            at = j;
+          }
+          j += 1;
+        }
+        if at < 0 {
+          ArrayPush(list, data);
+        } else {
+          ArrayInsert(list, at, data);
+        }
       }
     }
     i += 1;
   }
   return list;
+}
+
+// --- the world device's station logo -------------------------------------------------------------
+// SetupStationLogo is a switch over the fourteen that falls through to "no_station", and it only
+// sets the texture PART - the widget keeps the vanilla atlas. A custom station needs both: its own
+// atlas resource and its own part, taken from the UIIcon record its station record points at.
+
+@wrapMethod(RadioInkGameController)
+private final func SetupStationLogo() -> Void {
+  let station: Int32 = EnumInt(this.GetOwner().GetDevicePS().GetActiveRadioStation());
+  if NRFDial.Slot(station) < 0 {
+    wrappedMethod();
+    return;
+  }
+
+  let stationRecord = TweakDBInterface.GetRadioStationRecord(NRFDial.Record(station));
+  if !IsDefined(stationRecord) {
+    wrappedMethod();
+    return;
+  }
+  // The vehicle popup already solves this: given a UIIcon record id, RequestSetImage loads the
+  // record's own atlas and part. Setting the part alone would leave the vanilla atlas in place.
+  InkImageUtils.RequestSetImage(this, this.m_stationLogoWidget, stationRecord.Icon().GetID(), n"");
+  NRFLog(s"device logo: station \(station) -> \(stationRecord.Icon().GetID())");
 }

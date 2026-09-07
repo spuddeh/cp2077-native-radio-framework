@@ -28,6 +28,7 @@ public native func NRF_StationTrack(index: Int32, track: Int32) -> CName;
 public native func NRF_StationTrackDuration(index: Int32, track: Int32) -> Float;
 public native func NRF_StationTrackWwiseId(index: Int32, track: Int32) -> Uint32;
 public native func NRF_StationRecord(index: Int32) -> String;
+public native func NRF_StationSpeaker(index: Int32) -> String;
 
 // A station needs three things and the plugin supplies the first. This adds the other two as the
 // cooked audio metadata loads:
@@ -38,6 +39,17 @@ public native func NRF_StationRecord(index: Int32) -> String;
 //
 // Order matters only in that the plugin patches the roster at load, long before this runs. A
 // station that gains membership without identity kills every radio in the game.
+public func NRFSpeaker(name: String) -> audioRadioSpeakerType {
+  switch name {
+    case "MaximumMike": return audioRadioSpeakerType.MaximumMike;
+    case "PoliceDispatch": return audioRadioSpeakerType.PoliceDispatch;
+    case "Kurtz": return audioRadioSpeakerType.Kurtz;
+    case "Ash": return audioRadioSpeakerType.Ash;
+    case "None": return audioRadioSpeakerType.None;
+  }
+  return audioRadioSpeakerType.Stanley;
+}
+
 public class NativeRadioFramework extends ScriptableService {
 
   private let m_tokens: array<ref<ResourceToken>>;
@@ -172,7 +184,11 @@ public class NativeRadioFramework extends ScriptableService {
 
     let station = new audioRadioStationMetadata();
     station.name = name;
-    station.speaker = audioRadioSpeakerType.None;
+    // The DJ. NO vanilla station uses `None`: twelve of the fourteen dial stations are Stanley,
+    // Attitude Rock is Maximum Mike, Growl FM is Ash, and even police and kurtz name their own.
+    // So `None` is an untested value rather than the safe default it looks like, and Stanley is
+    // the default here.
+    station.speaker = NRFSpeaker(NRF_StationSpeaker(index));
 
     let tracks: Int32 = NRF_StationTrackCount(index);
     let t: Int32 = 0;

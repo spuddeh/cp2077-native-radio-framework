@@ -73,6 +73,7 @@ struct Station
 {
     std::string name;         // the station CName, e.g. radio_station_20_hangouts
     std::string record;       // the TweakDB RadioStation record carrying its name, icon and dial slot
+    std::string speaker;      // audioRadioSpeakerType - the station's DJ
     std::vector<Track> tracks;
     std::string source;       // which manifest it came from, for logging
 };
@@ -294,6 +295,7 @@ void LoadManifests()
         Station station;
         station.name = JsonString(text, "name");
         station.record = JsonString(text, "record");
+        station.speaker = JsonString(text, "speaker");
         station.tracks = JsonTracks(text);
         station.source = entry.path().filename().string();
 
@@ -543,6 +545,19 @@ void NRF_StationTrack(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4e
     }
 }
 
+void NRF_StationSpeaker(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+{
+    int32_t index = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    ++aFrame->code;
+    if (aOut)
+    {
+        *aOut = (g_patched && index >= 0 && index < static_cast<int32_t>(g_stations.size()))
+                    ? RED4ext::CString(g_stations[index].speaker.c_str())
+                    : RED4ext::CString("");
+    }
+}
+
 void NRF_StationRecord(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
@@ -654,6 +669,13 @@ void RegisterNatives()
     record->AddParam("Int32", "index");
     record->SetReturnType("String");
     rtti->RegisterFunction(record);
+
+    auto* speaker = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationSpeaker",
+                                                     "NRF_StationSpeaker", &NRF_StationSpeaker);
+    speaker->flags.isNative = true;
+    speaker->AddParam("Int32", "index");
+    speaker->SetReturnType("String");
+    rtti->RegisterFunction(speaker);
 
     auto* duration = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrackDuration", "NRF_StationTrackDuration",
                                                       &NRF_StationTrackDuration);
