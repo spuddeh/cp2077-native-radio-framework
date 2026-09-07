@@ -76,6 +76,7 @@ public class NativeRadioFramework extends ScriptableService {
 
   private let m_tokens: array<ref<ResourceToken>>;
   private let m_events: ref<audioAudioEventArray>;
+  private let m_cooked: ref<audioCookedMetadataResource>;
   private let m_audioDone: Bool;
   private let m_cookedDone: Bool;
   private let m_eventsDone: Bool;
@@ -240,6 +241,7 @@ public class NativeRadioFramework extends ScriptableService {
     }
     this.m_eventsDone = true;
     NRFLog(s"registered \(added) event(s) in the audio event table after \(this.m_polls) poll(s)");
+    this.Register(this.m_cooked);
     return true;
   }
 
@@ -262,12 +264,20 @@ public class NativeRadioFramework extends ScriptableService {
     this.Register(token.GetResource() as audioCookedMetadataResource);
   }
 
+  // **The station is built only once every track has a length.** A station built before its tracks
+  // have durations is scheduled against zeroes, and it then picks a track at random instead of
+  // running on the clock the way a vanilla station does.
   private func Register(cooked: ref<audioCookedMetadataResource>) -> Void {
     if !IsDefined(cooked) || this.m_cookedDone { return; }
 
     let count: Int32 = NRF_StationCount();
     if count <= 0 {
       NRFLog("no stations registered - either none are installed, or the roster was not patched");
+      return;
+    }
+    if !this.m_eventsDone {
+      this.m_cooked = cooked;
+      this.Poll();
       return;
     }
     this.m_cookedDone = true;

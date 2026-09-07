@@ -143,11 +143,20 @@ public final static func GetStationName(radioStationType: ERadioStationList) -> 
   return slot >= 0 ? NRF_StationName(slot) : wrappedMethod(radioStationType);
 }
 
-// A channel name is a localization KEY, and a custom station has one minted for it.
+// A channel name is a localization key, and it is returned in the game's `LocKey#<hash>` form.
+//
+// **A row added to onscreens at load is findable by HASH, not by its key string.** The secondary
+// key index is already built by then, so a lookup by text finds nothing - and a widget handed a
+// string that resolves to nothing keeps the text it had, which reads as the previous station.
+// `LocKey#` is the engine's own way of asking by hash, so it resolves for a custom station exactly
+// as a plain key does for a vanilla one.
 @wrapMethod(RadioStationDataProvider)
 public final static func GetChannelName(radioStationType: ERadioStationList) -> String {
   let slot: Int32 = NRFDial.Slot(EnumInt(radioStationType));
-  return slot >= 0 ? NameToString(NRF_StationKey(slot)) : wrappedMethod(radioStationType);
+  if slot < 0 {
+    return wrappedMethod(radioStationType);
+  }
+  return "LocKey#" + ToString(NRF_StationKeyHash(slot));
 }
 
 // --- dial order ---------------------------------------------------------------------------------
