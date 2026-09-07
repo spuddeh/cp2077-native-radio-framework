@@ -22,7 +22,6 @@
 ## Planned
 
 - Vehicle next/previous cycling past the vanilla fourteen (`0x25fdf1b` is unpatched).
-- Degrade when the plugin DLL is absent, or ship the `.reds` and DLL as one archive - a release blocker.
 - Replace the two roster functions and the vehicle receiver rather than patching their bounds, which
   lifts the 127-station ceiling.
 - Adopt RadioXL station definitions unchanged, starting with Outrun Waves 93.7.
