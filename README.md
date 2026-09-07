@@ -54,6 +54,11 @@ framework writes what it registered to `r6/logs/mods/`; without it the logging c
 
 ## How it works
 
+What the framework measured about the engine on the way - the compiled roster and its readers, the
+boot-time window a station must be registered in, why every label is a key, what `mod_sfx_radio`
+is and what AudioXL's renderer does with it - is written up in [docs/](docs/README.md), each claim
+marked measured or inferred.
+
 Three layers. The split matters, because each one extends a different engine system.
 
 ### The plugin - `plugin/src/`
