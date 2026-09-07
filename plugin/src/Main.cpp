@@ -588,36 +588,55 @@ void NRF_StationTrackWwiseId(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame
     }
 }
 
+// The redscript half declares these inside `module NativeRadioFramework`, so the name it resolves
+// is module-qualified. Registering them bare fails script validation with "Missing native global
+// function", which stops every redscript mod on the machine from compiling - not just this one.
+// A CName built from a string carries the hash but not the string, so anything that prints or
+// resolves it by text sees nothing. Registering the pair costs nothing and makes logs readable.
+void PoolNames()
+{
+    for (const auto& station : g_stations)
+    {
+        RED4ext::CNamePool::Add(station.name.c_str());
+        for (const auto& track : station.tracks)
+        {
+            RED4ext::CNamePool::Add(track.event.c_str());
+        }
+    }
+}
+
 void RegisterNatives()
 {
+    PoolNames();
+
     auto* rtti = RED4ext::CRTTISystem::Get();
 
-    auto* count = RED4ext::CGlobalFunction::Create("NRF_StationCount", "NRF_StationCount", &NRF_StationCount);
+    auto* count = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationCount", "NRF_StationCount", &NRF_StationCount);
     count->flags.isNative = true;
     count->SetReturnType("Int32");
     rtti->RegisterFunction(count);
 
-    auto* name = RED4ext::CGlobalFunction::Create("NRF_StationName", "NRF_StationName", &NRF_StationName);
+    auto* name = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationName", "NRF_StationName", &NRF_StationName);
     name->flags.isNative = true;
     name->AddParam("Int32", "index");
     name->SetReturnType("CName");
     rtti->RegisterFunction(name);
 
     auto* trackCount =
-        RED4ext::CGlobalFunction::Create("NRF_StationTrackCount", "NRF_StationTrackCount", &NRF_StationTrackCount);
+        RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrackCount", "NRF_StationTrackCount", &NRF_StationTrackCount);
     trackCount->flags.isNative = true;
     trackCount->AddParam("Int32", "index");
     trackCount->SetReturnType("Int32");
     rtti->RegisterFunction(trackCount);
 
-    auto* track = RED4ext::CGlobalFunction::Create("NRF_StationTrack", "NRF_StationTrack", &NRF_StationTrack);
+    auto* track = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrack", "NRF_StationTrack", &NRF_StationTrack);
     track->flags.isNative = true;
     track->AddParam("Int32", "index");
     track->AddParam("Int32", "track");
     track->SetReturnType("CName");
     rtti->RegisterFunction(track);
 
-    auto* duration = RED4ext::CGlobalFunction::Create("NRF_StationTrackDuration", "NRF_StationTrackDuration",
+    auto* duration = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrackDuration", "NRF_StationTrackDuration",
                                                       &NRF_StationTrackDuration);
     duration->flags.isNative = true;
     duration->AddParam("Int32", "index");
@@ -625,7 +644,7 @@ void RegisterNatives()
     duration->SetReturnType("Float");
     rtti->RegisterFunction(duration);
 
-    auto* wwise = RED4ext::CGlobalFunction::Create("NRF_StationTrackWwiseId", "NRF_StationTrackWwiseId",
+    auto* wwise = RED4ext::CGlobalFunction::Create("NativeRadioFramework.NRF_StationTrackWwiseId", "NRF_StationTrackWwiseId",
                                                    &NRF_StationTrackWwiseId);
     wwise->flags.isNative = true;
     wwise->AddParam("Int32", "index");
