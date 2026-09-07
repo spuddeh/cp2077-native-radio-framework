@@ -44,8 +44,9 @@ sorts to the top.
 
 ## What the manifest does NOT carry
 
-**No durations.** AudioXL reports the length of each file, and the station schedules the next track
-against that. A hand-written duration is a second place for it to be wrong.
+**No durations.** The framework reads each file's length from its headers at load, and the station
+schedules the next track against that. A hand-written duration is a second place for it to be wrong.
+A file whose length cannot be read is dropped, and the log names it.
 
 **No event names.** They are derived as `<name>_01`, `<name>_02` and so on, so a filename with a
 space or an accent in it never reaches an event name.

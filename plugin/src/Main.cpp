@@ -2,7 +2,7 @@
 // Mod Name: Native Radio Framework
 // Author: Spuddeh
 // Description: Extends the engine's radio station roster so custom stations are real stations.
-// File Version: 0.1.0
+// File Version: 0.2.0
 // Credits: RED4ext by WopsS. AudioXL by DigitalVixen for the plugin shape.
 // ======================================================================================
 //
@@ -20,6 +20,8 @@
 
 #include <Windows.h>
 #include <RED4ext/RED4ext.hpp>
+
+#include "Duration.hpp"
 
 #include <cstdint>
 #include <cstdio>
@@ -86,7 +88,7 @@ constexpr uint8_t kCmpR8[] = {0x41, 0x83, 0xF8};
 // **An `inc qword [rdi]` sits INSIDE the division**, at +0x62, so the block cannot be filled with
 // nops in one run without deleting a live side effect. Two runs skip over it.
 constexpr size_t kName2MovEax   = 0x5D;  // B8 25 49 92 24   mov eax, 0x24924925
-constexpr size_t kName2Keep     = 0x62;  // 48 FF 07         inc qword [rdi]   <- NOT ours
+constexpr size_t kName2Keep     = 0x62;  // 48 FF 07         inc qword [rdi]   a live side effect, kept
 constexpr size_t kName2DivFrom  = 0x65;  // F7 E1            mul ecx
 constexpr size_t kName2DivTo    = 0x77;  // one past `sub ecx, eax`
 constexpr size_t kName2Imul     = 0x72;  // 6B C0 0E         imul eax, eax, 14
@@ -110,13 +112,14 @@ constexpr uint8_t kCmpEdi[] = {0x83, 0xFF};
 constexpr int kVanillaCount = 14;
 constexpr int kMaxStations = 127;  // both bounds are 8-bit immediates
 
-// A track is an audio FILE and a title. Nothing else, because nothing else has to be written by
-// hand: AudioXL registers the file, and it reports the length and the Wwise id the engine needs.
-// A manifest that carried a duration would be a second place for it to be wrong.
+// A track is an audio FILE and a title. Nothing else is written by hand: the length is read from
+// the file's own headers at load, and AudioXL registers the file and supplies the Wwise id. A
+// manifest that carried a duration would be a second place for it to be wrong.
 struct Track
 {
-    std::string file;   // relative to the station's own manifest folder
-    std::string title;  // the song title as it is shown, plain text, may be empty
+    std::string file;       // relative to the station's own manifest folder
+    std::string title;      // the song title as it is shown, plain text, may be empty
+    float duration = 0.0f;  // seconds, from the file's headers - what the station schedules against
 };
 
 struct Station
@@ -209,6 +212,12 @@ uint64_t Fnv1a64(const std::string& aText)
     return hash;
 }
 
+std::string Clock(double aSeconds)
+{
+    const int whole = static_cast<int>(aSeconds + 0.5);
+    return std::to_string(whole / 60) + "m" + (whole % 60 < 10 ? "0" : "") + std::to_string(whole % 60) + "s";
+}
+
 std::string Hex(uintptr_t aValue)
 {
     char buf[32];
@@ -241,7 +250,7 @@ std::string JsonString(const std::string& aText, const std::string& aKey)
     return close == std::string::npos ? std::string() : aText.substr(open + 1, close - open - 1);
 }
 
-// tracks: [ { "event": "...", "duration": 0.0 }, ... ]
+// tracks: [ { "file": "...", "title": "..." }, ... ]
 std::vector<Track> JsonTracks(const std::string& aText)
 {
     std::vector<Track> out;
@@ -379,10 +388,29 @@ void LoadManifests()
             Log(station.source + ": manifest has no \"name\" - skipped");
             continue;
         }
+        // Each file's length, from its headers. The engine reads the event table while it boots,
+        // before any audio framework has decoded a file, so this is the only source ready in time.
+        // A track with no readable length is dropped: a zero in that table is what makes a station
+        // pick a track at random instead of running on the clock.
+        double total = 0.0;
+        for (auto it = station.tracks.begin(); it != station.tracks.end();)
+        {
+            it->duration = nrf::AudioDuration(std::filesystem::path(station.folder) / it->file);
+            if (it->duration <= 0.0f)
+            {
+                Log(station.source + ": '" + it->file +
+                    "' has no readable length (missing, or not WAV/MP3/OGG/FLAC) - dropped");
+                it = station.tracks.erase(it);
+                continue;
+            }
+            total += it->duration;
+            ++it;
+        }
+
         if (station.tracks.empty())
         {
             Log(station.source + ": station '" + station.name +
-                "' lists no usable tracks - each needs a \"file\" - skipped");
+                "' lists no usable tracks - each needs a \"file\" with a readable length - skipped");
             continue;
         }
 
@@ -400,7 +428,7 @@ void LoadManifests()
         if (!duplicate)
         {
             Log(station.source + ": '" + station.name + "' with " +
-                std::to_string(station.tracks.size()) + " track(s)" +
+                std::to_string(station.tracks.size()) + " track(s), " + Clock(total) +
                 (station.displayName.empty() ? ", NO displayName - it will show its CName"
                                              : ", '" + station.displayName + "'"));
             g_stations.push_back(std::move(station));
@@ -794,6 +822,24 @@ void NRF_StationTrackFile(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, R
     OutString(aOut, std::string());
 }
 
+// Seconds, from the file's headers: the event table row's duration, which the station schedules
+// its next track against.
+void NRF_StationTrackDuration(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t)
+{
+    int32_t index = -1;
+    int32_t track = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    RED4ext::GetParameter(aFrame, &track);
+    ++aFrame->code;
+    const Station* s = At(index);
+    if (aOut)
+    {
+        *aOut = (s && track >= 0 && track < static_cast<int32_t>(s->tracks.size()))
+                    ? s->tracks[track].duration
+                    : 0.0f;
+    }
+}
+
 // The value a localization row is INDEXED by. A row whose primaryKey is 0 resolves for nothing.
 void NRF_StationKeyHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
 {
@@ -921,6 +967,7 @@ void RegisterNatives()
     reg("NRF_StationTrackKey", &NRF_StationTrackKey, "CName", 2);
     reg("NRF_StationTrackFile", &NRF_StationTrackFile, "String", 2);
     reg("NRF_StationTrackTitle", &NRF_StationTrackTitle, "String", 2);
+    reg("NRF_StationTrackDuration", &NRF_StationTrackDuration, "Float", 2);
     reg("NRF_StationKeyHash", &NRF_StationKeyHash, "Uint64", 1);
     reg("NRF_StationTrackKeyHash", &NRF_StationTrackKeyHash, "Uint64", 2);
     reg("NRF_StationKeyHash64", &NRF_StationKeyHash64, "Uint64", 1);
@@ -932,7 +979,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"NativeRadioFramework";
     aInfo->author = L"Spuddeh";
-    aInfo->version = RED4EXT_V1_SEMVER(0, 1, 0);
+    aInfo->version = RED4EXT_V1_SEMVER(0, 2, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

@@ -1,3 +1,3 @@
-### [Unreleased - v0.1.0]
+### [Unreleased - v0.2.0]
 
 - First release.

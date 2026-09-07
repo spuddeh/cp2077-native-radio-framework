@@ -12,7 +12,7 @@ target_include_directories(NativeRadioFramework PRIVATE
     "${CMAKE_CURRENT_SOURCE_DIR}/../../../_source/RED4ext.SDK/include")
 
 target_compile_definitions(NativeRadioFramework PRIVATE
-    WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS RED4EXT_HEADER_ONLY)
+    WIN32_LEAN_AND_MEAN NOMINMAX _CRT_SECURE_NO_WARNINGS)
 
 set_target_properties(NativeRadioFramework PROPERTIES
     OUTPUT_NAME "NativeRadioFramework"

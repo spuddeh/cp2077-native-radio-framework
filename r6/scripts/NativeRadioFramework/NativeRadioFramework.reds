@@ -33,6 +33,7 @@ public native func NRF_StationTrack(index: Int32, track: Int32) -> CName;
 public native func NRF_StationTrackKey(index: Int32, track: Int32) -> CName;
 public native func NRF_StationTrackFile(index: Int32, track: Int32) -> String;
 public native func NRF_StationTrackTitle(index: Int32, track: Int32) -> String;
+public native func NRF_StationTrackDuration(index: Int32, track: Int32) -> Float;
 public native func NRF_StationKeyHash(index: Int32) -> Uint64;
 public native func NRF_StationTrackKeyHash(index: Int32, track: Int32) -> Uint64;
 public native func NRF_StationKeyHash64(index: Int32) -> Uint64;
@@ -41,11 +42,19 @@ public native func NRF_StationTrackKeyHash64(index: Int32, track: Int32) -> Uint
 // A station is assembled out of the systems the game already has, in this order:
 //
 //   identity      its CName in the engine roster              the plugin, at load
-//   audio         AudioXL registers each track's file          RegisterAudio
-//   membership    its name in radioStations                    RegisterStation
-//   content       an audioRadioStationMetadata with tracks     RegisterStation
-//   titles        an audioRadioTrack row per track             RegisterStation
-//   text          onscreens entries for the name and titles    RegisterText
+//   length        each track's duration, from its file        the plugin, at load
+//   schedule      an event row per track, with that length    RegisterEvents, as the table loads
+//   membership    its name in radioStations                   Register, as the metadata loads
+//   content       an audioRadioStationMetadata with tracks    Register, as the metadata loads
+//   titles        an audioRadioTrack row per track            Register, as the metadata loads
+//   text          onscreens entries for the name and titles   RegisterText, as the file loads
+//   audio         AudioXL registers each track's file         RegisterAudio, whenever AudioXL can
+//
+// **The first seven happen while the resource they touch is LOADING, and nothing may delay them.**
+// The engine builds its station set once, from those resources as they load. A station whose
+// membership or event rows arrive afterwards is never constructed: its data is present, every log
+// line reads as success, and every receiver is silent. Only the audio registration may wait,
+// because AudioXL takes it whenever it is ready and the engine resolves the sound at play time.
 //
 // **Every label the game shows is a localization KEY, never the text.** The name table the plugin
 // patches holds one, and so does every audioRadioTrack. A station's key is minted here and the text
@@ -62,8 +71,7 @@ public func NRFSpeaker(name: String) -> audioRadioSpeakerType {
   return audioRadioSpeakerType.None;
 }
 
-// AudioXL answers only once its registry is ready, several seconds after the audio metadata
-// loads. This carries the retry.
+// AudioXL takes a registration only once the engine's audio system exists. This carries the retry.
 public class NRFPoll extends DelayCallback {
   public let service: wref<NativeRadioFramework>;
 
@@ -77,8 +85,6 @@ public class NRFPoll extends DelayCallback {
 public class NativeRadioFramework extends ScriptableService {
 
   private let m_tokens: array<ref<ResourceToken>>;
-  private let m_events: ref<audioAudioEventArray>;
-  private let m_cooked: ref<audioCookedMetadataResource>;
   private let m_audioDone: Bool;
   private let m_cookedDone: Bool;
   private let m_eventsDone: Bool;
@@ -105,6 +111,8 @@ public class NativeRadioFramework extends ScriptableService {
     this.Watch(depot, r"base\\sound\\metadata\\cooked_metadata.audio_metadata", n"OnCookedReady");
     this.Watch(depot, r"base\\sound\\event\\eventsmetadata.json", n"OnEventsReady");
     this.Watch(depot, r"base\\localization\\en-us\\onscreens\\onscreens.json", n"OnOnScreensReady");
+
+    this.Poll();
   }
 
   private cb func OnSessionReady(event: ref<GameSessionEvent>) {
@@ -120,8 +128,8 @@ public class NativeRadioFramework extends ScriptableService {
   }
 
   // --- audio --------------------------------------------------------------------------------------
-  // AudioXL owns sound. It takes the file, and it reports the length and the Wwise id, so neither
-  // has to be written into a manifest where it could disagree with the file.
+  // AudioXL owns sound. It takes the file and supplies the Wwise id; the track's length is the
+  // plugin's, read from the file's headers, because it is needed before AudioXL can decode anything.
 
   private func RegisterAudio() -> Void {
     if this.m_audioDone { return; }
@@ -150,46 +158,20 @@ public class NativeRadioFramework extends ScriptableService {
     NRFLog(s"registered \(registered) track(s) with AudioXL");
   }
 
-  // --- the audio event table ------------------------------------------------------------------------
-  // An event present in the registry but absent from this table cannot be posted by name, and fails
-  // silently. The duration here is what the station schedules the next track against.
-
-  private cb func OnEventsMetadata(event: ref<ResourceEvent>) {
-    this.RegisterEvents(event.GetResource() as JsonResource);
-  }
-
-  private cb func OnEventsReady(token: ref<ResourceToken>) {
-    this.RegisterEvents(token.GetResource() as JsonResource);
-  }
-
-  private func RegisterEvents(resource: ref<JsonResource>) -> Void {
-    if !IsDefined(resource) || IsDefined(this.m_events) { return; }
-    let events = resource.root as audioAudioEventArray;
-    if !IsDefined(events) { return; }
-
-    // The rows cannot be written yet. AudioXL reports a length only once its registry is ready,
-    // and that happens several seconds after this resource loads, so the array is kept and filled
-    // in as soon as it can answer. A row written now would carry a zero duration, and a station
-    // schedules its next track against that.
-    this.m_events = events;
-    this.Poll();
-  }
-
-  // Runs until AudioXL can answer, then registers the audio and writes the event rows. Bounded, so
-  // a missing or broken AudioXL costs a minute of polling rather than a permanent timer.
+  // Runs until AudioXL is available, then hands it every track. Bounded, so a missing or broken
+  // AudioXL costs a minute of polling rather than a permanent timer. This is the ONLY step allowed
+  // to wait: everything the engine reads at boot is written as its resource loads.
   public func Poll() -> Void {
-    if this.m_eventsDone { return; }
+    if this.m_audioDone { return; }
 
     if NRFAudio.Available() {
       this.RegisterAudio();
-      if this.WriteEvents() {
-        return;
-      }
+      return;
     }
 
     this.m_polls += 1;
     if this.m_polls > 120 {
-      NRFLog("AudioXL never became ready - no track has a duration, so no station can play");
+      NRFLog("AudioXL never became available - no track has audio, so no station can sound");
       return;
     }
 
@@ -205,9 +187,28 @@ public class NativeRadioFramework extends ScriptableService {
     delay.DelayCallback(again, 0.5);
   }
 
-  private func WriteEvents() -> Bool {
+  // --- the audio event table ------------------------------------------------------------------------
+  // An event present in the registry but absent from this table cannot be posted by name, and fails
+  // silently. The duration here is what the station schedules the next track against, and **it must
+  // be in the table while the table loads**: the engine reads it once, at boot. A row with a zero
+  // duration makes the station pick a track at random instead of running on the clock.
+
+  private cb func OnEventsMetadata(event: ref<ResourceEvent>) {
+    this.RegisterEvents(event.GetResource() as JsonResource);
+  }
+
+  private cb func OnEventsReady(token: ref<ResourceToken>) {
+    this.RegisterEvents(token.GetResource() as JsonResource);
+  }
+
+  private func RegisterEvents(resource: ref<JsonResource>) -> Void {
+    if !IsDefined(resource) || this.m_eventsDone { return; }
+    let events = resource.root as audioAudioEventArray;
+    if !IsDefined(events) { return; }
+    this.m_eventsDone = true;
+
     let added: Int32 = 0;
-    let missing: Int32 = 0;
+    let total: Float = 0.0;
     let station: Int32 = 0;
     let count: Int32 = NRF_StationCount();
     while station < count {
@@ -215,11 +216,11 @@ public class NativeRadioFramework extends ScriptableService {
       let t: Int32 = 0;
       while t < tracks {
         let name: CName = NRF_StationTrack(station, t);
-        let duration: Float = NRFAudio.Duration(name);
+        let duration: Float = NRF_StationTrackDuration(station, t);
         if duration <= 0.0 {
-          missing += 1;
+          NRFLog(s"\(name) has no length - not added to the event table");
         } else {
-          if !this.HasEvent(this.m_events, name) {
+          if !this.HasEvent(events, name) {
             let row: audioAudioEventMetadataArrayElement;
             row.redId = name;
             row.wwiseId = NRFAudio.WwiseId(name);
@@ -227,24 +228,16 @@ public class NativeRadioFramework extends ScriptableService {
             row.maxAttenuation = 0.0;
             row.minDuration = duration;
             row.maxDuration = duration;
-            ArrayPush(this.m_events.events, row);
+            ArrayPush(events.events, row);
             added += 1;
+            total += duration;
           }
         }
         t += 1;
       }
       station += 1;
     }
-
-    // Every track answering is the only proof the registry finished. Half an answer means it is
-    // still decoding, so this returns and the poll comes back.
-    if missing > 0 {
-      return false;
-    }
-    this.m_eventsDone = true;
-    NRFLog(s"registered \(added) event(s) in the audio event table after \(this.m_polls) poll(s)");
-    this.Register(this.m_cooked);
-    return true;
+    NRFLog(s"registered \(added) event(s) in the audio event table as it loaded, \(Cast<Int32>(total)) s of audio");
   }
 
   private func HasEvent(events: ref<audioAudioEventArray>, name: CName) -> Bool {
@@ -266,20 +259,15 @@ public class NativeRadioFramework extends ScriptableService {
     this.Register(token.GetResource() as audioCookedMetadataResource);
   }
 
-  // **The station is built only once every track has a length.** A station built before its tracks
-  // have durations is scheduled against zeroes, and it then picks a track at random instead of
-  // running on the clock the way a vanilla station does.
+  // **Membership and the station entry are written while this resource LOADS, and never later.** The
+  // engine builds its station set once, from this resource. A station whose entry arrives even a few
+  // seconds after is never constructed - the data is present and every receiver is silent.
   private func Register(cooked: ref<audioCookedMetadataResource>) -> Void {
     if !IsDefined(cooked) || this.m_cookedDone { return; }
 
     let count: Int32 = NRF_StationCount();
     if count <= 0 {
       NRFLog("no stations registered - either none are installed, or the roster was not patched");
-      return;
-    }
-    if !this.m_eventsDone {
-      this.m_cooked = cooked;
-      this.Poll();
       return;
     }
     this.m_cookedDone = true;
@@ -342,7 +330,7 @@ public class NativeRadioFramework extends ScriptableService {
       ArrayPush(map.radioStations, name);
     }
 
-    NRFLog(s"registered \(name): \(ArraySize(station.tracks)) track(s), map now lists \(ArraySize(map.radioStations))");
+    NRFLog(s"registered \(name) as the metadata loaded: \(ArraySize(station.tracks)) track(s), map now lists \(ArraySize(map.radioStations))");
   }
 
   // The row the dashboard and the radio wheel read the song title from. `localizationKey` is a key,
@@ -413,8 +401,8 @@ public class NativeRadioFramework extends ScriptableService {
   }
 
   // **The localization list is SORTED by primaryKey and searched with a binary search.** A row
-  // appended to the end is therefore unreachable, whatever its key - which is why a name resolved
-  // to nothing and the widget kept the text it already had.
+  // appended to the end is unreachable, whatever its key: the lookup fails and the widget keeps
+  // the text it already had.
   //
   // A key is registered under BOTH hash widths, exactly as ArchiveXL does it: the 32-bit row keeps
   // the key text, the 64-bit row does not, so a lookup by either width finds one.
