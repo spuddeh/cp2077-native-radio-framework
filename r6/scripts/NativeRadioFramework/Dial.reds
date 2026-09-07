@@ -241,59 +241,13 @@ private final func SetupStationLogo() -> Void {
   NRFLog(s"device logo: station \(station) -> \(stationRecord.Icon().GetID())");
 }
 
-// --- the dashboard station label -------------------------------------------------------------
-// `GetRadioReceiverStationName` is native with NO SCRIPT BODY, so it cannot be wrapped, and on a
-// custom station it falls back to AGGRO_INDUSTRIAL - Radio Vexelstrom. The station itself is
-// right: `GetCurrentRadioIndex` returns the real slot. So the name is corrected where it is
-// written and where it is read, and a vanilla station is never touched.
-
-@addMethod(VehicleComponent)
-private final func NRFFixStationName() -> Void {
-  let vehicle: wref<VehicleObject> = this.GetVehicle();
-  if !IsDefined(vehicle) || !IsDefined(this.m_vehicleBlackboard) {
-    return;
-  }
-  let slot: Int32 = NRFDial.Slot(Cast<Int32>(vehicle.GetCurrentRadioIndex()));
-  if slot < 0 {
-    return;
-  }
-  this.m_vehicleBlackboard.SetName(GetAllBlackboardDefs().Vehicle.VehRadioStationName,
-                                   NRF_StationName(slot));
-}
-
-@wrapMethod(VehicleComponent)
-protected cb func OnVehicleRadioStationInitialized(evt: ref<VehicleRadioStationInitialized>) -> Bool {
-  let handled: Bool = wrappedMethod(evt);
-  this.NRFFixStationName();
-  return handled;
-}
-
-@wrapMethod(VehicleComponent)
-protected cb func OnVehicleRadioEvent(evt: ref<VehicleRadioEvent>) -> Bool {
-  let handled: Bool = wrappedMethod(evt);
-  this.NRFFixStationName();
-  return handled;
-}
-
-// The popup reads the same native directly rather than the blackboard.
-@wrapMethod(VehicleRadioPopupGameController)
-private final func GetRadioReceiverStationName() -> CName {
-  if IsDefined(this.m_playerVehicle) {
-    let slot: Int32 = NRFDial.Slot(Cast<Int32>(this.m_playerVehicle.GetCurrentRadioIndex()));
-    if slot >= 0 {
-      return NRF_StationName(slot);
-    }
-  }
-  return wrappedMethod();
-}
-
 // --- song titles ----------------------------------------------------------------------------
 // A vanilla track name is a localization key and the popup calls SetLocalizedText with it. A
 // custom station's titles are plain text in the manifest, so they are substituted here rather
 // than registered as strings the game would have to look up.
 //
 // The lookup is by track EVENT name, which is what the receiver reports, so it does not depend on
-// knowing which station is playing.
+// knowing which station is playing, and it serves the Radioport and the car alike.
 
 public class NRFTitle {
   public final static func Of(event: CName) -> String {
