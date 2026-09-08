@@ -226,8 +226,79 @@ std::string Hex(uintptr_t aValue)
 }
 
 // --- a very small JSON reader -----------------------------------------------------------------
-// Only what a station manifest needs: top-level strings and one array of strings. Anything it does
+// Only what a station manifest needs: top-level strings and one array of objects. Anything it does
 // not understand is ignored rather than rejected, so a manifest can carry fields for later.
+
+// The index of the quote that closes the string literal opening at aOpen, honouring escapes.
+size_t JsonStringEnd(const std::string& aText, size_t aOpen)
+{
+    for (size_t i = aOpen + 1; i < aText.size(); ++i)
+    {
+        if (aText[i] == '\\')
+        {
+            ++i;
+        }
+        else if (aText[i] == '"')
+        {
+            return i;
+        }
+    }
+    return std::string::npos;
+}
+
+// A JSON string literal's value. An escaped backslash becomes one backslash, which a depot path is
+// full of; a \u escape outside ASCII becomes UTF-8.
+std::string JsonUnescape(const std::string& aRaw)
+{
+    std::string out;
+    out.reserve(aRaw.size());
+    for (size_t i = 0; i < aRaw.size(); ++i)
+    {
+        const char c = aRaw[i];
+        if (c != '\\' || i + 1 >= aRaw.size())
+        {
+            out += c;
+            continue;
+        }
+        const char e = aRaw[++i];
+        switch (e)
+        {
+        case 'n': out += '\n'; break;
+        case 't': out += '\t'; break;
+        case 'r': out += '\r'; break;
+        case 'b': out += '\b'; break;
+        case 'f': out += '\f'; break;
+        case 'u':
+        {
+            if (i + 4 >= aRaw.size())
+            {
+                return out;
+            }
+            const unsigned code = static_cast<unsigned>(std::strtoul(aRaw.substr(i + 1, 4).c_str(), nullptr, 16));
+            i += 4;
+            if (code < 0x80)
+            {
+                out += static_cast<char>(code);
+            }
+            else if (code < 0x800)
+            {
+                out += static_cast<char>(0xC0 | (code >> 6));
+                out += static_cast<char>(0x80 | (code & 0x3F));
+            }
+            else
+            {
+                out += static_cast<char>(0xE0 | (code >> 12));
+                out += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
+                out += static_cast<char>(0x80 | (code & 0x3F));
+            }
+            break;
+        }
+        default: out += e; break;  // backslash, quote, slash, and anything unknown: the character itself
+        }
+    }
+    return out;
+}
+
 std::string JsonString(const std::string& aText, const std::string& aKey)
 {
     const std::string needle = "\"" + aKey + "\"";
@@ -246,8 +317,21 @@ std::string JsonString(const std::string& aText, const std::string& aKey)
     {
         return {};
     }
-    const size_t close = aText.find('"', open + 1);
-    return close == std::string::npos ? std::string() : aText.substr(open + 1, close - open - 1);
+    const size_t close = JsonStringEnd(aText, open);
+    return close == std::string::npos ? std::string() : JsonUnescape(aText.substr(open + 1, close - open - 1));
+}
+
+// A depot path uses backslashes. A manifest may write either.
+std::string DepotPath(std::string aPath)
+{
+    for (auto& c : aPath)
+    {
+        if (c == '/')
+        {
+            c = '\\';
+        }
+    }
+    return aPath;
 }
 
 // tracks: [ { "file": "...", "title": "..." }, ... ]
@@ -260,26 +344,48 @@ std::vector<Track> JsonTracks(const std::string& aText)
         return out;
     }
     const size_t open = aText.find('[', at);
-    const size_t close = aText.find(']', open == std::string::npos ? at : open);
-    if (open == std::string::npos || close == std::string::npos)
+    if (open == std::string::npos)
     {
         return out;
     }
 
-    size_t cursor = open;
-    while (true)
+    // Walks the array one object at a time, stepping over string literals so a title holding a
+    // bracket or a brace cannot end the array or an object early.
+    size_t cursor = open + 1;
+    while (cursor < aText.size())
     {
-        const size_t objOpen = aText.find('{', cursor);
-        if (objOpen == std::string::npos || objOpen > close)
+        const char c = aText[cursor];
+        if (c == ']')
         {
             break;
         }
-        const size_t objClose = aText.find('}', objOpen);
-        if (objClose == std::string::npos || objClose > close)
+        if (c == '"')
+        {
+            const size_t end = JsonStringEnd(aText, cursor);
+            cursor = end == std::string::npos ? aText.size() : end + 1;
+            continue;
+        }
+        if (c != '{')
+        {
+            ++cursor;
+            continue;
+        }
+        size_t objClose = cursor + 1;
+        while (objClose < aText.size() && aText[objClose] != '}')
+        {
+            if (aText[objClose] == '"')
+            {
+                const size_t end = JsonStringEnd(aText, objClose);
+                objClose = end == std::string::npos ? aText.size() : end + 1;
+                continue;
+            }
+            ++objClose;
+        }
+        if (objClose >= aText.size())
         {
             break;
         }
-        const std::string chunk = aText.substr(objOpen, objClose - objOpen + 1);
+        const std::string chunk = aText.substr(cursor, objClose - cursor + 1);
 
         Track track;
         track.file = JsonString(chunk, "file");
@@ -377,7 +483,7 @@ void LoadManifests()
         station.name = JsonString(text, "name");
         station.displayName = JsonString(text, "displayName");
         station.icon = JsonString(text, "icon");
-        station.atlas = JsonString(text, "atlas");
+        station.atlas = DepotPath(JsonString(text, "atlas"));
         station.speaker = JsonString(text, "speaker");
         station.tracks = JsonTracks(text);
         station.source = entry.path().filename().string();
