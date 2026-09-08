@@ -157,11 +157,17 @@ public final static func GetStationName(radioStationType: ERadioStationList) -> 
   return slot >= 0 ? NRF_StationName(slot) : wrappedMethod(radioStationType);
 }
 
-// A channel name is a localization key, the same shape vanilla returns.
+// A channel name is a localization key. A world device hands it to `SetLocalizedTextString`, which
+// resolves a plain key by its STRING, and a row registered at load is found by hash only - by text
+// it resolves to nothing and the widget keeps the previous station's name. `LocKey#<hash>` is the
+// engine's own form for asking by hash, and it is what a device's own name (`LocKey#96`) uses.
 @wrapMethod(RadioStationDataProvider)
 public final static func GetChannelName(radioStationType: ERadioStationList) -> String {
   let slot: Int32 = NRFDial.Slot(EnumInt(radioStationType));
-  return slot >= 0 ? NameToString(NRF_StationKey(slot)) : wrappedMethod(radioStationType);
+  if slot < 0 {
+    return wrappedMethod(radioStationType);
+  }
+  return "LocKey#" + ToString(NRF_StationKeyHash(slot));
 }
 
 // --- dial order ---------------------------------------------------------------------------------
