@@ -8,6 +8,7 @@ plugin/build/
 .vscode/
 .history/
 *.log
+images/
 
 # Loopback recordings for the crackle investigation (#3); tens of MB, never committed
 audio-tests/

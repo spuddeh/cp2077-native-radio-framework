@@ -24,6 +24,7 @@ computes a value the game already knows, and nothing in a manifest can disagree 
 | `name` | the station's `CName`. Unique across every installed station mod; first found wins, the log names the loser |
 | `displayName` | plain text. **The frequency at the front**, because the game has no field for it and the vehicle radio list sorts on it |
 | `speaker` | optional DJ: `Stanley`, `MaximumMike`, `Ash`, `Kurtz`, `PoliceDispatch`. Default `None`, which plays |
+| `gain` | optional level trim on the samples, 0 to 1, clamped. Default 0.56 (-5 dB), which lands the custom sound's two Broadcast Sends inside the vanilla per-station range; see `audio-path.md`. Applied through AudioXL's `SetGain` once the row exists, because `RegisterSoundEx`'s gain never reaches the samples |
 | `icon` / `atlas` | optional inkatlas part and the atlas holding it. Default: the game's own `no_station` part in `base\gameplay\gui\common\icons\radiostations_icons.inkatlas` |
 | `tracks[].file` | an audio file relative to the manifest's folder: WAV, MP3, OGG, FLAC |
 | `tracks[].title` | optional plain text, shown as written |

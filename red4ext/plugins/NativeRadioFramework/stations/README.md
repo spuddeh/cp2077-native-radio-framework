@@ -30,6 +30,7 @@ soundbank, no redscript. Everything else is built from the manifest at load.
 | `name` | The station's own CName. It must be unique across every installed station mod. |
 | `displayName` | The label the game shows. Put the frequency at the front. |
 | `speaker` | Optional. The station's DJ. Defaults to `None`. |
+| `gain` | Optional. A level trim on every track, `0` to `1`. Defaults to `0.56`, which is -5 dB. |
 | `icon` | Optional. An inkatlas part name. Defaults to the game's own `no_station` glyph. |
 | `atlas` | Optional. The inkatlas holding that part, as a depot path (`mymod\gui\icons.inkatlas`, no `base\`). Required when `icon` is set. |
 | `tracks[].file` | An audio file, relative to this manifest's folder. |
@@ -37,6 +38,10 @@ soundbank, no redscript. Everything else is built from the manifest at load.
 
 `speaker` names one of `Stanley`, `MaximumMike`, `Ash`, `Kurtz` or `PoliceDispatch`. Every vanilla
 station names one; a station without one plays.
+
+`gain` is the station's mastering trim, the same knob every vanilla station carries. The game feeds
+a custom station to world devices hotter than its own stations, so a track mastered to 0 dBFS
+crackles there at `1`. The default sits inside the vanilla range; raise it only for quiet material.
 
 **The frequency lives at the front of `displayName`**, because the game has no field for it, and it
 is what the vehicle radio list sorts on. A station whose display name does not start with a number

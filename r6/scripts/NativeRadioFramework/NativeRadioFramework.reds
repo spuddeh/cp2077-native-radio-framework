@@ -28,6 +28,7 @@ public native func NRF_StationDisplayName(index: Int32) -> String;
 public native func NRF_StationIcon(index: Int32) -> String;
 public native func NRF_StationAtlas(index: Int32) -> String;
 public native func NRF_StationSpeaker(index: Int32) -> String;
+public native func NRF_StationGain(index: Int32) -> Float;
 public native func NRF_StationTrackCount(index: Int32) -> Int32;
 public native func NRF_StationTrack(index: Int32, track: Int32) -> CName;
 public native func NRF_StationTrackKey(index: Int32, track: Int32) -> CName;
@@ -82,6 +83,17 @@ public class NRFPoll extends DelayCallback {
   }
 }
 
+// A row AudioXL queued gets its level trim on a later pass. This carries that retry.
+public class NRFGainPoll extends DelayCallback {
+  public let service: wref<NativeRadioFramework>;
+
+  public func Call() -> Void {
+    if IsDefined(this.service) {
+      this.service.ApplyGains();
+    }
+  }
+}
+
 public class NativeRadioFramework extends ScriptableService {
 
   private let m_tokens: array<ref<ResourceToken>>;
@@ -90,6 +102,8 @@ public class NativeRadioFramework extends ScriptableService {
   private let m_eventsDone: Bool;
   private let m_textDone: Bool;
   private let m_polls: Int32;
+  private let m_gainPending: Bool;
+  private let m_gainPolls: Int32;
 
   private cb func OnLoad() {
     let cb = GameInstance.GetCallbackSystem();
@@ -140,6 +154,7 @@ public class NativeRadioFramework extends ScriptableService {
     let count: Int32 = NRF_StationCount();
     while station < count {
       let tracks: Int32 = NRF_StationTrackCount(station);
+      let gain: Float = NRF_StationGain(station);
       let t: Int32 = 0;
       while t < tracks {
         let event: CName = NRF_StationTrack(station, t);
@@ -147,6 +162,9 @@ public class NativeRadioFramework extends ScriptableService {
         if IsNameValid(event) && StrLen(file) > 0 && !NRFAudio.Has(event) {
           if NRFAudio.Register(event, file) {
             registered += 1;
+            if !NRFAudio.SetGain(event, gain) {
+              this.m_gainPending = true;
+            }
           } else {
             NRFLog(s"AudioXL refused \(event) - \(file)");
           }
@@ -156,6 +174,45 @@ public class NativeRadioFramework extends ScriptableService {
       station += 1;
     }
     NRFLog(s"registered \(registered) track(s) with AudioXL");
+    if this.m_gainPending {
+      this.ApplyGains();
+    }
+  }
+
+  // A row AudioXL queued has no gain to set at registration time. Walk every track again until each
+  // SetGain lands, bounded, so a row that never appears costs a few seconds rather than a timer.
+  public func ApplyGains() -> Void {
+    let failed: Int32 = 0;
+    let station: Int32 = 0;
+    let count: Int32 = NRF_StationCount();
+    while station < count {
+      let tracks: Int32 = NRF_StationTrackCount(station);
+      let gain: Float = NRF_StationGain(station);
+      let t: Int32 = 0;
+      while t < tracks {
+        let event: CName = NRF_StationTrack(station, t);
+        if IsNameValid(event) && !NRFAudio.SetGain(event, gain) {
+          failed += 1;
+        }
+        t += 1;
+      }
+      station += 1;
+    }
+    if failed == 0 {
+      this.m_gainPending = false;
+      return;
+    }
+    this.m_gainPolls += 1;
+    if this.m_gainPolls > 20 {
+      NRFLog(s"\(failed) track(s) never got a row in AudioXL, so their level trim was not applied");
+      this.m_gainPending = false;
+      return;
+    }
+    let delay = GameInstance.GetDelaySystem(GetGameInstance());
+    if !IsDefined(delay) { return; }
+    let again = new NRFGainPoll();
+    again.service = this;
+    delay.DelayCallback(again, 0.5);
   }
 
   // Runs until AudioXL is available, then hands it every track. Bounded, so a missing or broken

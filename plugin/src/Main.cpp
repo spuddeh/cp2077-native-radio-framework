@@ -23,6 +23,8 @@
 
 #include "Duration.hpp"
 
+#include <algorithm>
+#include <cstdlib>
 #include <cstdint>
 #include <cstdio>
 #include <cctype>
@@ -129,6 +131,7 @@ struct Station
     std::string icon;         // an inkatlas part name, or empty for the framework's own glyph
     std::string atlas;        // the inkatlas resource holding that part, or empty for the framework's
     std::string speaker;      // audioRadioSpeakerType - the station's DJ
+    float gain = 0.56f;       // level trim applied to every track's samples, 0..1; see NRF_StationGain
     std::vector<Track> tracks;
     std::string source;       // which manifest it came from, for logging
     std::string folder;       // the manifest's own directory, which track files are relative to
@@ -310,6 +313,33 @@ std::string JsonUnescape(const std::string& aRaw)
         }
     }
     return out;
+}
+
+// A bare number after `"key":` - the manifest's only numeric field. Anything that is not a number,
+// or a key that is absent, gives the default.
+float JsonNumber(const std::string& aText, const std::string& aKey, float aDefault)
+{
+    const std::string needle = "\"" + aKey + "\"";
+    size_t at = aText.find(needle);
+    while (at != std::string::npos)
+    {
+        size_t cursor = at + needle.size();
+        while (cursor < aText.size() && std::isspace(static_cast<unsigned char>(aText[cursor])))
+            ++cursor;
+        if (cursor < aText.size() && aText[cursor] == ':')
+        {
+            ++cursor;
+            while (cursor < aText.size() && std::isspace(static_cast<unsigned char>(aText[cursor])))
+                ++cursor;
+            char* end = nullptr;
+            const double v = std::strtod(aText.c_str() + cursor, &end);
+            if (end && end != aText.c_str() + cursor)
+                return static_cast<float>(v);
+            return aDefault;
+        }
+        at = aText.find(needle, at + 1);
+    }
+    return aDefault;
 }
 
 std::string JsonString(const std::string& aText, const std::string& aKey)
@@ -498,6 +528,10 @@ void LoadManifests()
         station.icon = JsonString(text, "icon");
         station.atlas = DepotPath(JsonString(text, "atlas"));
         station.speaker = JsonString(text, "speaker");
+        // The game's custom-radio object sends a world device 3 to 7 dB hotter than any vanilla
+        // station, and a master sitting on 0 dBFS wraps in the next 16-bit stage there. 0.56 (-5 dB)
+        // lands both of its sends inside the vanilla range. Above 1 there is nothing to gain.
+        station.gain = std::clamp(JsonNumber(text, "gain", 0.56f), 0.0f, 1.0f);
         station.tracks = JsonTracks(text);
         station.source = entry.path().filename().string();
         // Kept as UTF-8. A manifest is UTF-8 and a track file may carry any script in its name, and
@@ -878,6 +912,19 @@ void NRF_StationSpeaker(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED
     OutString(aOut, s ? s->speaker : std::string());
 }
 
+// The level trim for every track of a station, applied through AudioXL's SetGain once the row
+// exists. RegisterSoundEx's own gain argument is stored in the engine's registry entry and never
+// reaches the samples, so it is not the way to set this.
+void NRF_StationGain(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t)
+{
+    int32_t index = -1;
+    RED4ext::GetParameter(aFrame, &index);
+    ++aFrame->code;
+    const Station* s = At(index);
+    if (aOut)
+        *aOut = s ? s->gain : 0.56f;
+}
+
 void NRF_StationTrackCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
 {
     int32_t index = -1;
@@ -1083,6 +1130,7 @@ void RegisterNatives()
     reg("NRF_StationIcon", &NRF_StationIcon, "String", 1);
     reg("NRF_StationAtlas", &NRF_StationAtlas, "String", 1);
     reg("NRF_StationSpeaker", &NRF_StationSpeaker, "String", 1);
+    reg("NRF_StationGain", &NRF_StationGain, "Float", 1);
     reg("NRF_StationTrackCount", &NRF_StationTrackCount, "Int32", 1);
     reg("NRF_StationTrack", &NRF_StationTrack, "CName", 2);
     reg("NRF_StationTrackKey", &NRF_StationTrackKey, "CName", 2);

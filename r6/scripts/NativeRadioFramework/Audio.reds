@@ -26,11 +26,25 @@ public class NRFAudio {
 
   @if(ModuleExists("AudioXL"))
   public final static func Register(event: CName, file: String) -> Bool {
-    // gain 1.0, pitch default, distance 30: the row's attenuation reach at a world device. 0 is the
-    // engine's default for the mod_sfx_radio object, which is tuned for a broadcast effect and plays
-    // a station audibly quieter at a device than a vanilla one. `stream` is read for WAV only.
+    // pitch default, distance 30: the row's attenuation reach at a world device. 0 is the engine's
+    // default for the mod_sfx_radio object, which is tuned for a broadcast effect and plays a
+    // station audibly quieter at a device than a vanilla one. `stream` is read for WAV only.
+    // The gain argument here is stored in the engine's registry entry and never reaches the
+    // samples; the level is set through SetGain below once the row exists.
     return AudioXLNative.RegisterSoundEx(event, n"mod_sfx_radio", file, 1.0, 0.0, 30.0,
                                          false, 0.0, 0.0, 0.0, 0.0, 0.0, true);
+  }
+
+  // The level trim on a row's samples. False when the row does not exist yet: AudioXL queues a
+  // registration made before the engine's audio system is up, and a queued row has no gain to set.
+  @if(ModuleExists("AudioXL"))
+  public final static func SetGain(event: CName, gain: Float) -> Bool {
+    return AudioXLNative.SetGain(event, gain);
+  }
+
+  @if(!ModuleExists("AudioXL"))
+  public final static func SetGain(event: CName, gain: Float) -> Bool {
+    return false;
   }
 
   @if(!ModuleExists("AudioXL"))
