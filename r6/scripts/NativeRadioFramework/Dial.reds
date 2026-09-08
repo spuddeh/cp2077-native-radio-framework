@@ -272,10 +272,15 @@ public final static func GetRadioStations(player: ref<GameObject>) -> array<ref<
 // sets the texture PART - the widget keeps the vanilla atlas. A custom station needs both: its own
 // atlas resource and its own part, taken from the UIIcon record its station record points at.
 
+// The vanilla body sets only the texture PART, on whatever atlas the widget currently holds. Once a
+// custom station has put its own atlas there, a vanilla part no longer exists in it and the custom
+// logo sticks, so the vanilla atlas is put back before the vanilla body runs.
 @wrapMethod(RadioInkGameController)
 private final func SetupStationLogo() -> Void {
   let station: Int32 = EnumInt(this.GetOwner().GetDevicePS().GetActiveRadioStation());
   if NRFDial.Slot(station) < 0 {
+    inkImageRef.SetAtlasResource(this.m_stationLogoWidget,
+                                 ResRef.FromName(StringToName(NRFIcons.FallbackAtlas())));
     wrappedMethod();
     return;
   }
