@@ -26,8 +26,10 @@ public class NRFAudio {
 
   @if(ModuleExists("AudioXL"))
   public final static func Register(event: CName, file: String) -> Bool {
-    // Streamed rather than held in memory: a station is tens of minutes of audio.
-    return AudioXLNative.RegisterSoundEx(event, n"mod_sfx_radio", file, 1.0, 0.0, 0.0,
+    // gain 1.0, pitch default, distance 30: the row's attenuation reach at a world device. 0 is the
+    // engine's default for the mod_sfx_radio object, which is tuned for a broadcast effect and plays
+    // a station audibly quieter at a device than a vanilla one. `stream` is read for WAV only.
+    return AudioXLNative.RegisterSoundEx(event, n"mod_sfx_radio", file, 1.0, 0.0, 30.0,
                                          false, 0.0, 0.0, 0.0, 0.0, 0.0, true);
   }
 

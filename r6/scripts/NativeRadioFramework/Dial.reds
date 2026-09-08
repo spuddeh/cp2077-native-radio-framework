@@ -103,10 +103,19 @@ public class NRFRecords extends ScriptableTweak {
       atlas = NRFIcons.FallbackAtlas();
     }
 
+    // `atlasResourcePath` is a resource reference, and TweakXL refuses a value of another type
+    // outright (`AssignFlat` returns InvalidType) - a String written here is dropped and the record
+    // keeps an empty atlas, which makes every icon request fail silently. ResRef.FromName hashes
+    // the path the way a depot path is hashed.
     let madeIcon: Bool = TweakDBManager.CreateRecord(StringToName(iconName), n"gamedataUIIcon_Record");
-    TweakDBManager.SetFlat(TDBID.Create(iconName + ".atlasPartName"), ToVariant(StringToName(part)));
-    TweakDBManager.SetFlat(TDBID.Create(iconName + ".atlasResourcePath"), ToVariant(atlas));
+    let setPart: Bool = TweakDBManager.SetFlat(TDBID.Create(iconName + ".atlasPartName"),
+                                               ToVariant(StringToName(part)));
+    let setAtlas: Bool = TweakDBManager.SetFlat(TDBID.Create(iconName + ".atlasResourcePath"),
+                                                ToVariant(ResRef.FromName(StringToName(atlas))));
     TweakDBManager.UpdateRecord(iconId);
+    if !setPart || !setAtlas {
+      NRFLog(s"\(iconName): part \(setPart) atlas \(setAtlas) - the icon record is incomplete");
+    }
 
     // The display name is plain text. The engine's name table holds the station's localization KEY
     // and the popup compares the two resolved strings, so both sides have to land on the same text.
@@ -119,7 +128,7 @@ public class NRFRecords extends ScriptableTweak {
     TweakDBManager.SetFlat(TDBID.Create(recordName + ".index"), ToVariant(14 + slot));
     TweakDBManager.UpdateRecord(recordId);
 
-    NRFLog(s"\(recordName): record \(madeStation), icon \(madeIcon), index \(14 + slot)");
+    NRFLog(s"\(recordName): record \(madeStation), icon \(madeIcon) (\(part) in \(atlas)), index \(14 + slot)");
   }
 }
 
