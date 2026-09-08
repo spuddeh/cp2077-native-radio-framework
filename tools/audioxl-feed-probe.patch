@@ -1,0 +1,228 @@
+AudioXL feed probe (measurement build for issue #3).
+
+Applies to cp2077-audio-xl at 6e6909f (AudioXL 0.2.0). Logs, into the AudioXL red4ext log, how the
+engine pulls from AudioFeed::Execute per playing id: the first call, any change in requested frames or
+channel config, short or not-ready results, and a summary every 250 calls with the call interval in
+microseconds. Not for release; the log calls run on the audio thread.
+
+    git clone https://github.com/DigitalVixen/cp2077-audio-xl  (or copy _source/cp2077-audio-xl out)
+    git apply tools/audioxl-feed-probe.patch
+    cmake -S plugin -B plugin/build -G "Visual Studio 17 2022" -A x64 -DRED4EXT_SDK_DIR=<sdk> -DREDLIB_DIR=<redlib>
+    cmake --build plugin/build --config Release
+
+Build from a short path (D:	mp\...): the SDK's generated headers exceed MAX_PATH under a deep tree.
+
+diff --git a/plugin/src/AudioFeed.cpp b/plugin/src/AudioFeed.cpp
+index 7e5a7eb..57e2744 100644
+--- a/plugin/src/AudioFeed.cpp
++++ b/plugin/src/AudioFeed.cpp
+@@ -2,14 +2,83 @@
+ 
+ #include <algorithm>
+ #include <cmath>
++#include <cstdio>
+ #include <cstring>
+ 
++#include <windows.h>
++
++#include "AudioXLPlugin.hpp"
+ #include "SoundRegistry.hpp"
+ 
+ namespace AudioXLNS {
+ 
+ namespace {
+ 
++// ---- PROBE (measurement build, not for release) ----------------------------------------------
++// One record per playing id. Records how the engine pulls from the feed: call interval, frames
++// requested, channel config and state. A line is written on the first call for an id, on any change
++// of the requested frame count or channel config, on a short or non-ready result (rate-limited), and
++// as a summary every kProbeEvery calls.
++struct Probe {
++  uint32_t playingId = 0;
++  uint64_t calls = 0;
++  uint64_t firstQpc = 0;
++  uint64_t lastQpc = 0;
++  uint64_t minDt = ~0ull;
++  uint64_t maxDt = 0;
++  uint64_t sumDt = 0;
++  uint64_t winDt = 0;
++  uint16_t lastMax = 0;
++  uint16_t minMax = 0xFFFF;
++  uint16_t maxMax = 0;
++  uint32_t lastChan = 0;
++  uint32_t lastState = 0;
++  uint64_t shortCalls = 0;
++  uint64_t notReady = 0;
++  uint64_t produced = 0;
++  uint64_t shortLogged = 0;
++  double lastPos = 0.0;
++};
++constexpr size_t kProbes = 8;
++constexpr uint64_t kProbeEvery = 250;
++Probe g_probes[kProbes];
++uint64_t g_qpcFreq = 0;
++
++uint64_t Qpc() {
++  LARGE_INTEGER li;
++  QueryPerformanceCounter(&li);
++  return static_cast<uint64_t>(li.QuadPart);
++}
++
++uint64_t ToUs(uint64_t aTicks) {
++  if (g_qpcFreq == 0) {
++    LARGE_INTEGER f;
++    QueryPerformanceFrequency(&f);
++    g_qpcFreq = static_cast<uint64_t>(f.QuadPart);
++  }
++  return aTicks * 1000000ull / g_qpcFreq;
++}
++
++Probe& ProbeFor(uint32_t aPlayingId) {
++  Probe* oldest = &g_probes[0];
++  for (auto& p : g_probes) {
++    if (p.playingId == aPlayingId) return p;
++    if (p.playingId == 0) {
++      oldest = &p;
++      break;
++    }
++    if (p.lastQpc < oldest->lastQpc) oldest = &p;
++  }
++  *oldest = Probe{};
++  oldest->playingId = aPlayingId;
++  return *oldest;
++}
++
++void ProbeLog(const char* aLine) {
++  AudioXLPlugin::Get()->Info(aLine);
++}
++// ---- end PROBE -------------------------------------------------------------------------------
++
+ struct AkBuffer {
+   void* pData;
+   uint32_t channelConfig;
+@@ -131,6 +200,14 @@ AudioFeed::Voice* AudioFeed::Start(uint32_t aPlayingId, uint16_t aRow, bool aBou
+     if (BoundVoice* b = BindFor(aPlayingId)) slot->bindStopGen = b->stopGen.load(std::memory_order_relaxed);
+   }
+   m_rows[aRow].live.fetch_add(1, std::memory_order_relaxed);
++  {
++    char line[256];
++    std::snprintf(line, sizeof line,
++                  "probe start id=%u row=%u bound=%d rate=%u fmtChan=0x%x blockAndBits=0x%x frames=%u start=%u end=%u",
++                  aPlayingId, aRow, aBound ? 1 : 0, fmt ? fmt->sampleRate : 0, fmt ? fmt->channelConfig : 0,
++                  fmt ? fmt->blockAndBits : 0, total, slot->startFrame, slot->endFrame);
++    ProbeLog(line);
++  }
+   return slot;
+ }
+ 
+@@ -319,6 +396,87 @@ void AudioFeed::Render(Voice& v, void* aBuffer) {
+ void __fastcall AudioFeed::Execute(uint32_t aPlayingId, void* aBuffer) {
+   auto* self = Get();
+   auto* buf = static_cast<AkBuffer*>(aBuffer);
++
++  // PROBE: capture the request before anything touches the buffer.
++  const uint64_t now = Qpc();
++  Probe& pr = ProbeFor(aPlayingId);
++  const uint16_t reqMax = buf->uMaxFrames;
++  const uint32_t reqChan = buf->channelConfig;
++  const uint32_t stateIn = buf->eState;
++  char line[320];
++  if (pr.calls == 0) {
++    pr.firstQpc = now;
++    std::snprintf(line, sizeof line,
++                  "probe first id=%u maxFrames=%u chan=0x%x stateIn=%u voice=%s", aPlayingId, reqMax, reqChan,
++                  stateIn, self->Find(aPlayingId) ? "found" : "none");
++    ProbeLog(line);
++  } else {
++    const uint64_t dt = now - pr.lastQpc;
++    pr.minDt = std::min(pr.minDt, dt);
++    pr.maxDt = std::max(pr.maxDt, dt);
++    pr.sumDt += dt;
++    ++pr.winDt;
++    if (reqMax != pr.lastMax || reqChan != pr.lastChan) {
++      std::snprintf(line, sizeof line, "probe change id=%u call=%llu maxFrames %u->%u chan 0x%x->0x%x", aPlayingId,
++                    static_cast<unsigned long long>(pr.calls), pr.lastMax, reqMax, pr.lastChan, reqChan);
++      ProbeLog(line);
++    }
++  }
++  pr.lastQpc = now;
++  pr.lastMax = reqMax;
++  pr.lastChan = reqChan;
++  pr.minMax = std::min(pr.minMax, reqMax);
++  pr.maxMax = std::max(pr.maxMax, reqMax);
++  ++pr.calls;
++
++  ExecuteInner(aPlayingId, aBuffer);
++
++  // PROBE: capture the result.
++  const uint16_t valid = buf->uValidFrames;
++  const uint32_t stateOut = buf->eState;
++  pr.produced += valid;
++  const bool isShort = valid < reqMax;
++  const bool notReady = stateOut != kDataReady;
++  if (isShort) ++pr.shortCalls;
++  if (notReady) ++pr.notReady;
++  if ((isShort || notReady) && (pr.shortLogged < 20 || (pr.shortLogged % 100) == 0)) {
++    std::snprintf(line, sizeof line, "probe short id=%u call=%llu valid=%u max=%u stateOut=%u", aPlayingId,
++                  static_cast<unsigned long long>(pr.calls), valid, reqMax, stateOut);
++    ProbeLog(line);
++  }
++  if (isShort || notReady) ++pr.shortLogged;
++  pr.lastState = stateOut;
++  if (pr.calls % kProbeEvery == 0) {
++    const uint64_t n = pr.winDt;
++    double pos = -1.0;
++    uint16_t row = 0xFFFF;
++    if (Voice* pv = self->Find(aPlayingId)) {
++      pos = pv->pos;
++      row = pv->row;
++    }
++    std::snprintf(line, sizeof line,
++                  "probe sum id=%u calls=%llu t=%llums dt_us min/avg/max=%llu/%llu/%llu maxFrames=%u..%u chan=0x%x "
++                  "produced=%llu short=%llu notReady=%llu row=%u pos=%.0f",
++                  aPlayingId, static_cast<unsigned long long>(pr.calls),
++                  static_cast<unsigned long long>(ToUs(now - pr.firstQpc) / 1000),
++                  static_cast<unsigned long long>(ToUs(pr.minDt)),
++                  static_cast<unsigned long long>(n ? ToUs(pr.sumDt / n) : 0),
++                  static_cast<unsigned long long>(ToUs(pr.maxDt)), pr.minMax, pr.maxMax, reqChan,
++                  static_cast<unsigned long long>(pr.produced), static_cast<unsigned long long>(pr.shortCalls),
++                  static_cast<unsigned long long>(pr.notReady), row, pos);
++    ProbeLog(line);
++    pr.minDt = ~0ull;
++    pr.maxDt = 0;
++    pr.sumDt = 0;
++    pr.winDt = 0;
++    pr.minMax = 0xFFFF;
++    pr.maxMax = 0;
++  }
++}
++
++void AudioFeed::ExecuteInner(uint32_t aPlayingId, void* aBuffer) {
++  auto* self = Get();
++  auto* buf = static_cast<AkBuffer*>(aBuffer);
+   self->Sweep();
+   Voice* v = self->Find(aPlayingId);
+   if (!v) {
+@@ -361,6 +519,10 @@ void __fastcall AudioFeed::Format(uint32_t aPlayingId, void* aFormat) {
+   if (row == 0xFFFF) return;
+   if (const RowFormat* fmt = reg->FormatForRow(row)) {
+     std::memcpy(aFormat, fmt, sizeof(RowFormat));
++    char line[200];
++    std::snprintf(line, sizeof line, "probe format id=%u row=%u rate=%u chan=0x%x blockAndBits=0x%x", aPlayingId,
++                  row, fmt->sampleRate, fmt->channelConfig, fmt->blockAndBits);
++    ProbeLog(line);
+   }
+ }
+ 
+diff --git a/plugin/src/AudioFeed.hpp b/plugin/src/AudioFeed.hpp
+index 9b6c82a..51c5907 100644
+--- a/plugin/src/AudioFeed.hpp
++++ b/plugin/src/AudioFeed.hpp
+@@ -13,6 +13,7 @@ class AudioFeed {
+ 
+   static void __fastcall Execute(uint32_t aPlayingId, void* aBuffer);
+   static void __fastcall Format(uint32_t aPlayingId, void* aFormat);
++  static void ExecuteInner(uint32_t aPlayingId, void* aBuffer);
+ 
+   void Stop(uint16_t aRow, float aFadeOut);
+   void SetGain(uint16_t aRow, float aGain);
