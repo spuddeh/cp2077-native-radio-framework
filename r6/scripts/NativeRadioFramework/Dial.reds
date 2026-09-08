@@ -268,29 +268,24 @@ public final static func GetRadioStations(player: ref<GameObject>) -> array<ref<
 }
 
 // --- the world device's station logo -------------------------------------------------------------
-// SetupStationLogo is a switch over the fourteen that falls through to "no_station", and it only
-// sets the texture PART - the widget keeps the vanilla atlas. A custom station needs both: its own
-// atlas resource and its own part, taken from the UIIcon record its station record points at.
+// SetupStationLogo is a switch over the fourteen that sets only the texture PART, on whatever atlas
+// the widget currently holds. Every station, vanilla or custom, has a RadioStation record whose
+// UIIcon names both the atlas and the part, and RequestSetImage loads both - which is what the
+// vehicle popup does. Going through the record for every station means a custom atlas never sticks
+// on the widget after a vanilla station is selected.
 
-// The vanilla body sets only the texture PART, on whatever atlas the widget currently holds. Once a
-// custom station has put its own atlas there, a vanilla part no longer exists in it and the custom
-// logo sticks, so the vanilla atlas is put back before the vanilla body runs.
 @wrapMethod(RadioInkGameController)
 private final func SetupStationLogo() -> Void {
   let station: Int32 = EnumInt(this.GetOwner().GetDevicePS().GetActiveRadioStation());
-  if NRFDial.Slot(station) < 0 {
-    inkImageRef.SetAtlasResource(this.m_stationLogoWidget,
-                                 ResRef.FromName(StringToName(NRFIcons.FallbackAtlas())));
-    wrappedMethod();
-    return;
+  let list: array<ref<IScriptable>> = VehiclesManagerDataHelper.GetRadioStations(GetPlayer(GetGameInstance()));
+  let i: Int32 = 0;
+  while i < ArraySize(list) {
+    let row = list[i] as RadioListItemData;
+    if IsDefined(row) && IsDefined(row.m_record) && row.m_record.Index() == station {
+      InkImageUtils.RequestSetImage(this, this.m_stationLogoWidget, row.m_record.Icon().GetID(), n"");
+      return;
+    }
+    i += 1;
   }
-
-  let stationRecord = TweakDBInterface.GetRadioStationRecord(NRFDial.Record(station));
-  if !IsDefined(stationRecord) {
-    wrappedMethod();
-    return;
-  }
-  // The vehicle popup already solves this: given a UIIcon record id, RequestSetImage loads the
-  // record's own atlas and part. Setting the part alone would leave the vanilla atlas in place.
-  InkImageUtils.RequestSetImage(this, this.m_stationLogoWidget, stationRecord.Icon().GetID(), n"");
+  wrappedMethod();
 }
