@@ -48,11 +48,22 @@ broadcast channel": one of its RTPCs is `radio_broadcast_channel` (0..255), and 
 attenuations in `mod.bnk` belong to the occlusion, room, street and city sounds, not to this one.
 Vanilla stations go through the same two sends, so the send is not the difference.
 
-**The Time Stretch is.** It is the only instance of that plugin in all three banks, and it sits on
-the custom-radio sound alone. Its RTPC (`1400903616`, name unresolved) maps 0 to 200 % and 1 or
-more to 100 %, which reads as time dilation: `[I]` the plugin exists so a custom sound slows with
-the world when a bus-level pitch shift cannot reach an Audio Input source. At 100 % it should be
-transparent, but it is still a granular stage in the voice.
+**The Time Stretch is the only structural difference, and it is cleared as the crackle.** It is
+the only instance of that plugin in all three banks and sits on the custom-radio sound alone. Its
+RTPC (`1400903616`, name unresolved) maps 0 to 200 % and 1 or more to 100 %, which reads as time
+dilation: `[I]` the plugin exists so a custom sound slows with the world when a bus-level pitch
+shift cannot reach an Audio Input source. `[M]` Wwise 2023.1 Help, Time Stretch properties: "100%
+corresponds to no Time Stretch", and the value "may be smoothly changed during playback without
+additional artifacts". And it sits upstream of both sends, so anything it did would be heard on
+every receiver, while the crackle is heard at world devices only.
+
+`[M]` **The crackle is device-only, on two stations, with MP3 at 44.1 kHz, MP3 at 48 kHz and WAV at
+48 kHz alike**, so neither the files nor the sample rate is the cause. It is born after the point
+where a device's copy diverges from the Radioport's: in the engine's handling of the `Radio_Emitter`
+on the device entity (`radio_1.ent`: `gameAudioEmitterComponent`, `EmitterType Radio_Emitter`,
+acoustics `acousticsemitter_default_occl_obstr_ignore_0_5m` with occlusion and obstruction on). Open
+candidates: a second Audio Input voice on the emitter with its own cursor, the emitter's occlusion
+and obstruction processing, or the RTPC-driven EQ on the mod bus chain.
 
 ### The `axl_*` types are not an alternative
 
@@ -86,7 +97,7 @@ From its source, all `[M]`:
 | --- | --- | --- |
 | Right song after tuning back, from 0:00 | the engine picked the track from its clock; the renderer starts at 0 | `[M]` renderer side. **Open:** whether the engine asks for an offset on this path at all ([#1](https://github.com/spuddeh/cp2077-native-radio-framework/issues/1)) |
 | World devices quieter; car and Radioport fine | `818835100`'s attenuation, tuned for a broadcast SFX, not music. `RegisterSoundEx`'s `distance` is the untested knob | `[I]` ([#2](https://github.com/spuddeh/cp2077-native-radio-framework/issues/2)) |
-| Static and crackle, at devices only | two candidates left after the decode: the Broadcast Send path receiving a 44.1 kHz voice where vanilla gives it 48 kHz Vorbis, or the Time Stretch stage. The 48 kHz re-encode is the first test | `[I]` ([#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3)) |
+| Static and crackle, at devices only | not the files, not the rate, not the Time Stretch (all measured). Born on the device emitter's own path; see above | `[I]` ([#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3)) |
 | Hundreds of MB of RAM | decode at registration | `[M]` ([#4](https://github.com/spuddeh/cp2077-native-radio-framework/issues/4)) |
 
 ## The one question that decides the direction
