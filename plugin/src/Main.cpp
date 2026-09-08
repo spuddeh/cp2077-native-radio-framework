@@ -493,7 +493,9 @@ void LoadManifests()
         station.speaker = JsonString(text, "speaker");
         station.tracks = JsonTracks(text);
         station.source = entry.path().filename().string();
-        station.folder = entry.path().string();
+        // Kept as UTF-8. A manifest is UTF-8 and a track file may carry any script in its name, and
+        // std::filesystem::path(std::string) on Windows reads the system code page, not UTF-8.
+        station.folder = entry.path().u8string();
 
         if (station.name.empty())
         {
@@ -507,7 +509,7 @@ void LoadManifests()
         double total = 0.0;
         for (auto it = station.tracks.begin(); it != station.tracks.end();)
         {
-            it->duration = nrf::AudioDuration(std::filesystem::path(station.folder) / it->file);
+            it->duration = nrf::AudioDuration(std::filesystem::u8path(station.folder) / std::filesystem::u8path(it->file));
             if (it->duration <= 0.0f)
             {
                 Log(station.source + ": '" + it->file +
@@ -927,8 +929,8 @@ void NRF_StationTrackFile(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, R
     const Station* s = At(index);
     if (s && track >= 0 && track < static_cast<int32_t>(s->tracks.size()))
     {
-        const auto full = std::filesystem::path(s->folder) / s->tracks[track].file;
-        OutString(aOut, full.string());
+        const auto full = std::filesystem::u8path(s->folder) / std::filesystem::u8path(s->tracks[track].file);
+        OutString(aOut, full.u8string());
         return;
     }
     OutString(aOut, std::string());
