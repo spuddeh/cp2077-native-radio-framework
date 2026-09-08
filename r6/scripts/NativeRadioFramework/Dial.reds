@@ -276,12 +276,15 @@ public final static func GetRadioStations(player: ref<GameObject>) -> array<ref<
 
 @wrapMethod(RadioInkGameController)
 private final func SetupStationLogo() -> Void {
+  // A record's `index` is the DIAL position, not the ERadioStationList value - MinimTech is enum 9
+  // and index 5 - so the device's enum is mapped through the provider before the comparison.
   let station: Int32 = EnumInt(this.GetOwner().GetDevicePS().GetActiveRadioStation());
+  let dial: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(station);
   let list: array<ref<IScriptable>> = VehiclesManagerDataHelper.GetRadioStations(GetPlayer(GetGameInstance()));
   let i: Int32 = 0;
   while i < ArraySize(list) {
     let row = list[i] as RadioListItemData;
-    if IsDefined(row) && IsDefined(row.m_record) && row.m_record.Index() == station {
+    if IsDefined(row) && IsDefined(row.m_record) && row.m_record.Index() == dial {
       InkImageUtils.RequestSetImage(this, this.m_stationLogoWidget, row.m_record.Icon().GetID(), n"");
       return;
     }
