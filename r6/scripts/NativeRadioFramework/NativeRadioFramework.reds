@@ -131,6 +131,9 @@ public class NativeRadioFramework extends ScriptableService {
 
   private cb func OnSessionReady(event: ref<GameSessionEvent>) {
     this.Poll();
+    if this.m_gainPending {
+      this.ApplyGains();
+    }
   }
 
   private func Watch(depot: ref<ResourceDepot>, path: ResRef, callback: CName) -> Void {
@@ -200,6 +203,7 @@ public class NativeRadioFramework extends ScriptableService {
     }
     if failed == 0 {
       this.m_gainPending = false;
+      NRFLog("level trim applied to every track");
       return;
     }
     this.m_gainPolls += 1;
@@ -208,8 +212,13 @@ public class NativeRadioFramework extends ScriptableService {
       this.m_gainPending = false;
       return;
     }
+    // AudioXL's Available() is the plugin, not the engine's audio system, so the first pass runs
+    // before any row exists and before a session has a DelaySystem. Session/Ready calls back in.
     let delay = GameInstance.GetDelaySystem(GetGameInstance());
-    if !IsDefined(delay) { return; }
+    if !IsDefined(delay) {
+      NRFLog(s"\(failed) track(s) have no row yet - level trim deferred to the session");
+      return;
+    }
     let again = new NRFGainPoll();
     again.service = this;
     delay.DelayCallback(again, 0.5);
