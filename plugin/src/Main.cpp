@@ -124,6 +124,11 @@ struct Track
     float duration = 0.0f;  // seconds, from the file's headers - what the station schedules against
 };
 
+// The level trim every station gets unless its manifest says otherwise. -5 dB: the game's custom-radio
+// object sends a world device 3 to 7 dB hotter than any vanilla station, and a full-scale sample wraps
+// there between -4 and -5 dB of trim, measured. Both of its sends land inside the vanilla range here.
+constexpr float kDefaultGain = 0.56f;
+
 struct Station
 {
     std::string name;         // the station CName, e.g. radio_station_20_tool
@@ -131,7 +136,7 @@ struct Station
     std::string icon;         // an inkatlas part name, or empty for the framework's own glyph
     std::string atlas;        // the inkatlas resource holding that part, or empty for the framework's
     std::string speaker;      // audioRadioSpeakerType - the station's DJ
-    float gain = 0.56f;       // level trim applied to every track's samples, 0..1; see NRF_StationGain
+    float gain = kDefaultGain; // level trim applied to every track's samples, 0..1; see NRF_StationGain
     std::vector<Track> tracks;
     std::string source;       // which manifest it came from, for logging
     std::string folder;       // the manifest's own directory, which track files are relative to
@@ -528,10 +533,7 @@ void LoadManifests()
         station.icon = JsonString(text, "icon");
         station.atlas = DepotPath(JsonString(text, "atlas"));
         station.speaker = JsonString(text, "speaker");
-        // The game's custom-radio object sends a world device 3 to 7 dB hotter than any vanilla
-        // station, and a master sitting on 0 dBFS wraps in the next 16-bit stage there. 0.56 (-5 dB)
-        // lands both of its sends inside the vanilla range. Above 1 there is nothing to gain.
-        station.gain = std::clamp(JsonNumber(text, "gain", 0.56f), 0.0f, 1.0f);
+        station.gain = std::clamp(JsonNumber(text, "gain", kDefaultGain), 0.0f, 1.0f);
         station.tracks = JsonTracks(text);
         station.source = entry.path().filename().string();
         // Kept as UTF-8. A manifest is UTF-8 and a track file may carry any script in its name, and
@@ -922,7 +924,7 @@ void NRF_StationGain(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float*
     ++aFrame->code;
     const Station* s = At(index);
     if (aOut)
-        *aOut = s ? s->gain : 0.56f;
+        *aOut = s ? s->gain : kDefaultGain;
 }
 
 void NRF_StationTrackCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
