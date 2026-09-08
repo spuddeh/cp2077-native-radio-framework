@@ -30,6 +30,30 @@ audio that a radio receiver plays**, and it follows the Music slider, not SFX.
 `[M]` On it, the radio system owns the sound: a car takes the station over from the Radioport, a
 world device plays or stays silent by its own state, switching stations stops the previous track.
 
+### What the `mod_sfx_radio` object is, decoded from the banks
+
+`[M]` `mod.bnk`, `radio.bnk` and `init.bnk` parsed with wwiser:
+
+| | `mod_sfx_radio` (custom row) | a vanilla station playlist |
+| --- | --- | --- |
+| object | `CAkSound 529198484`, source Wwise Audio Input | `CAkMusicRanSeqCntr` (`375417660` Growl FM, `440066888`, ...) |
+| insert effects | **Wwise Time Stretch** `758059012`, CPR Voice Broadcast Send `772871769`, CPR Voice Broadcast Send `385769109` | CPR Voice Broadcast Send x2 |
+| positioning | 3D, attenuation enabled, no attenuation object of its own | same bits |
+| bus | `918052088` -> `1151059771` (Parametric EQ) -> `2996874604` -> `1836253337` -> Master | `666212655` (Parametric EQ) -> `music` -> Master |
+| sliders | RTPC `volume_music` on the sound | the music bus |
+| base props | Volume -96 dB, GameAuxSendVolume -96 dB | none |
+
+The **CPR Voice Broadcast Send** is CDPR's own plugin and the mechanism behind "tuned to a
+broadcast channel": one of its RTPCs is `radio_broadcast_channel` (0..255), and the four
+attenuations in `mod.bnk` belong to the occlusion, room, street and city sounds, not to this one.
+Vanilla stations go through the same two sends, so the send is not the difference.
+
+**The Time Stretch is.** It is the only instance of that plugin in all three banks, and it sits on
+the custom-radio sound alone. Its RTPC (`1400903616`, name unresolved) maps 0 to 200 % and 1 or
+more to 100 %, which reads as time dilation: `[I]` the plugin exists so a custom sound slows with
+the world when a bus-level pitch shift cannot reach an Audio Input source. At 100 % it should be
+transparent, but it is still a granular stage in the voice.
+
 ### The `axl_*` types are not an alternative
 
 `[M]` AudioXL's own routing bank defines `axl_voice_2d`, `axl_music_2d`, `axl_radio_2d`, `axl_sfx_2d`
@@ -62,7 +86,7 @@ From its source, all `[M]`:
 | --- | --- | --- |
 | Right song after tuning back, from 0:00 | the engine picked the track from its clock; the renderer starts at 0 | `[M]` renderer side. **Open:** whether the engine asks for an offset on this path at all ([#1](https://github.com/spuddeh/cp2077-native-radio-framework/issues/1)) |
 | World devices quieter; car and Radioport fine | `818835100`'s attenuation, tuned for a broadcast SFX, not music. `RegisterSoundEx`'s `distance` is the untested knob | `[I]` ([#2](https://github.com/spuddeh/cp2077-native-radio-framework/issues/2)) |
-| Static and crackle, worst at devices | the object's effect chain, or feed underruns | `[I]` ([#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3)) |
+| Static and crackle, at devices only | two candidates left after the decode: the Broadcast Send path receiving a 44.1 kHz voice where vanilla gives it 48 kHz Vorbis, or the Time Stretch stage. The 48 kHz re-encode is the first test | `[I]` ([#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3)) |
 | Hundreds of MB of RAM | decode at registration | `[M]` ([#4](https://github.com/spuddeh/cp2077-native-radio-framework/issues/4)) |
 
 ## The one question that decides the direction
