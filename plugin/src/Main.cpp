@@ -224,6 +224,13 @@ std::string Clock(double aSeconds)
     return std::to_string(whole / 60) + "m" + (whole % 60 < 10 ? "0" : "") + std::to_string(whole % 60) + "s";
 }
 
+// A path's UTF-8 text as a plain string. C++20 makes u8string() a char8_t string.
+std::string Utf8(const std::filesystem::path& aPath)
+{
+    const auto u8 = aPath.u8string();
+    return std::string(u8.begin(), u8.end());
+}
+
 std::string Hex(uintptr_t aValue)
 {
     char buf[32];
@@ -495,7 +502,7 @@ void LoadManifests()
         station.source = entry.path().filename().string();
         // Kept as UTF-8. A manifest is UTF-8 and a track file may carry any script in its name, and
         // std::filesystem::path(std::string) on Windows reads the system code page, not UTF-8.
-        station.folder = entry.path().u8string();
+        station.folder = Utf8(entry.path());
 
         if (station.name.empty())
         {
@@ -930,7 +937,7 @@ void NRF_StationTrackFile(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, R
     if (s && track >= 0 && track < static_cast<int32_t>(s->tracks.size()))
     {
         const auto full = std::filesystem::u8path(s->folder) / std::filesystem::u8path(s->tracks[track].file);
-        OutString(aOut, full.u8string());
+        OutString(aOut, Utf8(full));
         return;
     }
     OutString(aOut, std::string());
