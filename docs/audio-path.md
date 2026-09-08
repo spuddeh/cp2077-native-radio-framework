@@ -95,21 +95,31 @@ From its source, all `[M]`:
 
 | Heard | Cause | Mark |
 | --- | --- | --- |
-| Right song after tuning back, from 0:00 | the engine picked the track from its clock; the renderer starts at 0 | `[M]` renderer side. **Open:** whether the engine asks for an offset on this path at all ([#1](https://github.com/spuddeh/cp2077-native-radio-framework/issues/1)) |
+| Right song after tuning back, from 0:00 | the engine picked the track from its clock; the renderer starts at 0, and the engine hands no offset | `[M]` both sides ([#1](https://github.com/spuddeh/cp2077-native-radio-framework/issues/1)) |
+| Each track plays twice on a world device | declared duration longer than the decoded length by the LAME gapless trim; the engine re-posts the slot | `[M]` cause; fix awaiting a run ([#15](https://github.com/spuddeh/cp2077-native-radio-framework/issues/15)) |
 | World devices quieter; car and Radioport fine | `818835100`'s attenuation, tuned for a broadcast SFX, not music. `RegisterSoundEx`'s `distance` is the untested knob | `[I]` ([#2](https://github.com/spuddeh/cp2077-native-radio-framework/issues/2)) |
 | Static and crackle, at devices only | not the files, not the rate, not the Time Stretch (all measured). Born on the device emitter's own path; see above | `[I]` ([#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3)) |
 | Hundreds of MB of RAM | decode at registration | `[M]` ([#4](https://github.com/spuddeh/cp2077-native-radio-framework/issues/4)) |
 
-## The one question that decides the direction
+## The engine never hands a start offset on this path
 
-**Does the engine request a start offset for a custom-sound row?** A local AudioXL build logging the
-engine's slot position at `Start`, before AudioXL overwrites it, answers it in one run.
+`[M]` A probe build of AudioXL (`tools/audioxl-feed-probe.patch`) logs the engine's per-slot position
+at `AudioFeed::Start`, before the first render overwrites it. Seven voice starts, a mid-song tune-in
+among them: 0 every time. The engine writes 0 into the slot when it posts. So no renderer can resume
+by reading that field. Resume means either the framework computing the offset from its durations and
+the station clock and handing it to AudioXL as a per-row start, or the vanilla shape above, with its
+three unmeasured steps.
 
-- **Yes:** resume is a five-line change in AudioXL - read the field at voice start. Stay on
-  `mod_sfx_radio`, fix decode-on-the-fly upstream, tune attenuation.
-- **No:** no renderer can resume on this path. Either the framework computes the offset itself from
-  its durations and the game clock and hands it to AudioXL through a new per-row `SetStart`, or the
-  audio moves to the vanilla shape above, with its three unmeasured steps.
+## The engine posts the next track when the voice ends, and it posts the slot its clock names
+
+`[M]` Same probe: the next voice starts about 30 ms after the previous one retires at its last frame,
+never on a clock boundary. Which track it posts is whatever slot the station clock is in at that
+instant. **So the declared duration must equal the decoded length.** Declare longer and the voice ends
+inside its own slot, the slot is still current, and the engine posts the same track again from 0:00.
+The Tool FM MP3s carry a LAME gapless tag (delay 576, padding 717 to 1681 frames); dr_mp3 trims it,
+and a duration counted from the raw frame count is 27 to 47 ms too long. `Duration.hpp` subtracts the
+trim with dr_mp3's own arithmetic. Declare shorter and the voice outlives its slot; what the engine
+does then is unmeasured.
 
 ## Events, and why the row alone is not enough
 

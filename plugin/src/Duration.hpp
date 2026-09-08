@@ -19,6 +19,7 @@
 
 #include <cctype>
 #include <cstddef>
+#include <algorithm>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -190,18 +191,36 @@ inline bool FirstMp3Frame(const uint8_t* d, size_t n, size_t& at, Mp3Frame& f)
 // The frame count written by the encoder, when the first frame carries one. A Xing or Info block
 // (the latter is what LAME writes for CBR) sits after the side information; a VBRI block sits at a
 // fixed 32 bytes in. Either one means that first frame holds no audio.
-inline bool EncoderFrameCount(const uint8_t* d, size_t n, size_t at, const Mp3Frame& f, uint32_t& frames)
+//
+// `trim` is the encoder delay plus padding in PCM frames, from the LAME extension after the Xing
+// fields, or 0 when the block has none. A decoder that honours the extension (dr_mp3, ffmpeg) drops
+// those frames, so the audible length is the frame count minus `trim`. The duration declared to the
+// engine must equal the decoded length: declare more and the voice ends inside its slot, and the
+// station posts the same track again to fill the remainder. The arithmetic mirrors dr_mp3's.
+inline bool EncoderFrameCount(const uint8_t* d, size_t n, size_t at, const Mp3Frame& f, uint32_t& frames, uint32_t& trim)
 {
+    trim = 0;
     const size_t xing = at + 4 + f.sideInfo;
     if (xing + 12 <= n && (std::memcmp(d + xing, "Xing", 4) == 0 || std::memcmp(d + xing, "Info", 4) == 0))
     {
         const uint32_t flags = BE32(d + xing + 4);
-        if (flags & 1)
+        if (!(flags & 1))
         {
-            frames = BE32(d + xing + 8);
-            return frames > 0;
+            return false;
         }
-        return false;
+        frames = BE32(d + xing + 8);
+        size_t lame = xing + 8 + 4;
+        if (flags & 2) lame += 4;
+        if (flags & 4) lame += 100;
+        if (flags & 8) lame += 4;
+        if (lame + 24 <= n && d[lame] != 0)
+        {
+            const uint8_t* g = d + lame + 21;
+            const int32_t delay = int32_t((uint32_t(g[0]) << 4) | (uint32_t(g[1]) >> 4)) + 529;
+            const int32_t padding = std::max(0, int32_t(((uint32_t(g[1]) & 0xF) << 8) | uint32_t(g[2])) - 529);
+            trim = uint32_t(delay + padding);
+        }
+        return frames > 0;
     }
     const size_t vbri = at + 4 + 32;
     if (vbri + 18 <= n && std::memcmp(d + vbri, "VBRI", 4) == 0)
@@ -244,9 +263,12 @@ inline float Mp3Duration(const std::filesystem::path& aPath)
     if (FirstMp3Frame(head.data(), head.size(), firstAt, first))
     {
         uint32_t frames = 0;
-        if (EncoderFrameCount(head.data(), head.size(), firstAt, first, frames))
+        uint32_t trim = 0;
+        if (EncoderFrameCount(head.data(), head.size(), firstAt, first, frames, trim))
         {
-            return static_cast<float>(double(frames) * double(first.samples) / double(first.rate));
+            const uint64_t total = uint64_t(frames) * uint64_t(first.samples);
+            const uint64_t audible = total > trim ? total - trim : total;
+            return static_cast<float>(double(audible) / double(first.rate));
         }
     }
 
