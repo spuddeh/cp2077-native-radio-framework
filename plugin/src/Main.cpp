@@ -138,9 +138,15 @@ struct Station
 // the UI resolves it. So the framework mints a key per station and registers the text against it,
 // rather than writing raw text where the game expects something to look up. The key is derived
 // from the station name so the plugin and the redscript half agree on it without passing it.
+//
+// **A key resolves by STRING only under one of the game's three namespaces: `Gameplay-`, `UI-` or
+// `Common-`.** The localization manager indexes a key's text through a case-folded path only when it
+// starts with one of those (Cyberpunk2077.exe 2.31, the register-entry loop at 0x58ddf0); any other
+// key is reachable by hash alone. The dashboard, a world device and `GetLocalizedText` ask by string,
+// so the keys sit in the same namespace as the vanilla station keys they stand beside.
 std::string StationKey(const std::string& aStation)
 {
-    return "NRF-Station-" + aStation;
+    return "Gameplay-Devices-Radio-NRF-" + aStation;
 }
 
 std::string TwoDigit(size_t aIndex)
@@ -159,7 +165,7 @@ std::string TrackEvent(const Station& aStation, size_t aIndex)
 
 std::string TrackKey(const Station& aStation, size_t aIndex)
 {
-    return "NRF-Track-" + aStation.name + "-" + TwoDigit(aIndex);
+    return "Gameplay-Devices-Radio_tracks-NRF-" + aStation.name + "-" + TwoDigit(aIndex);
 }
 
 std::vector<Station> g_stations;

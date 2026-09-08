@@ -41,8 +41,8 @@ README to survive packaging.
 | track event name | `<name>_NN`, two digits from 01 | a filename with a space or an accent must never reach an event name |
 | Wwise id of the event | FNV-1 32-bit of the lowercased event name, from AudioXL | it is a function of the name |
 | track duration | read from the file's headers at plugin load | the file is the only thing that can be right; see [station set](station-set-and-load-order.md) |
-| station label key | `NRF-Station-<name>` | the engine's name table holds a key, not text |
-| title key | `NRF-Track-<name>-NN` | `audioRadioTrack` holds a key, not text |
+| station label key | `Gameplay-Devices-Radio-NRF-<name>` | the engine's name table holds a key, and a key resolves by string only under `Gameplay-`, `UI-` or `Common-`; see [localization](localization-keys.md) |
+| title key | `Gameplay-Devices-Radio_tracks-NRF-<name>-NN` | `audioRadioTrack` holds a key, in the same namespace as vanilla track keys |
 | both hashes of each key | FNV1a32 keeping the key text, FNV1a64 with it cleared | how `onscreens` rows are found; see [localization](localization-keys.md) |
 | `RadioStation` record | `RadioStation.NRF_<name>` with `displayName`, `icon`, `index` = slot | the index must equal the roster slot: the popup plays `record.Index()` |
 | `UIIcon` record | `UIIcon.NRF_<name>` with `atlasPartName`, `atlasResourcePath` | the wheel and the device logo load atlas and part from it |
