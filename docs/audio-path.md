@@ -43,6 +43,25 @@ world device plays or stays silent by its own state, switching stations stops th
 | sliders | RTPC `volume_music` on the sound | the music bus |
 | base props | Volume -96 dB, GameAuxSendVolume -96 dB | none |
 
+### The vanilla rule: the dry path is muted and the send is the station
+
+`[M]` **Every one of the 26 station playlists in `radio.bnk` carries `Volume -96 dB` on its own dry
+output and two CPR Voice Broadcast Send inserts, without exception.** A station is not a sound that
+also feeds a send - the send is the only way it is heard at all. So the send trim is not a
+correction on top of a level, it *is* the station's level, and matching a station means matching a
+send trim.
+
+Both stations' dials are narrow: the whole roster spans 4.9 dB on the stereo send and 2 dB on the
+mono one. Full table, per station, with the method for reading it back after a game patch:
+`[[CP2077-Mods/wiki/concepts/the-radio-broadcast-send-chain]]`.
+
+The consequence for anything that adds a track by cloning bank objects, measured in
+`[[CP2077-Mods/wiki/entities/hardest-to-be-growl-fm]]`: **a segment does not inherit that routing
+from a parent playlist in another bank.** It plays dry, at the source file's own level, about 15 dB
+hot, holding level with distance until the emitter's range cuts it. The node has to carry the
+station's effects, bus and Volume itself.
+`[[CP2077-Mods/wiki/learnings/a-cloned-segment-does-not-inherit-its-parent-across-banks]]`
+
 The **CPR Voice Broadcast Send** is CDPR's own plugin and the mechanism behind "tuned to a
 broadcast channel". Every station has its **own pair** of send sharesets, and so does `mod_sfx_radio`.
 The mono send (`207267`) takes the RTPC `radio_broadcast_channel` (default 8) and feeds the Radioport;
@@ -62,6 +81,10 @@ this one.
 | hottest vanilla station | +0.9 dB | -5.0 dB |
 | Growl FM | -4.0 dB | -5.0 dB |
 | quietest vanilla station | -4.0 dB | -7.0 dB |
+
+Every trim in the roster is a whole or a half dB. Two stations sit on a different bus, and two share
+one mono send rather than owning a pair, so reading only the `CAkFxCustom` objects and not the
+`CAkFxShareSet` ones misses part of the table.
 
 dr_mp3 decodes to int16 and clamps, so a modern master reaches the send already on 0 dBFS. The
 stereo send adds 2.9 dB and the next 16-bit stage wraps: the recorded artefact is a bass peak whose
