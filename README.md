@@ -7,7 +7,8 @@ This framework extends that array instead, so a custom station plays on the Radi
 vehicle radio and world device radios through the game's own radio system, with nothing wrapped
 around them.
 
-**Status: in development. Not a Nexus release.** It works in game with known gaps, and the source
+**Status: in development. Not a Nexus release.** Two stations play on every receiver with their own
+names and icons; what is still open is in the issues. The source
 is public so that what it measured about the engine can be reused, in
 [RadioXL](https://www.nexusmods.com/cyberpunk2077/mods/33488) or anywhere else. The
 [issues](https://github.com/spuddeh/cp2077-native-radio-framework/issues) list every open item and
