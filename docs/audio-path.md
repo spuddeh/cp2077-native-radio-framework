@@ -51,16 +51,21 @@ also feeds a send - the send is the only way it is heard at all. So the send tri
 correction on top of a level, it *is* the station's level, and matching a station means matching a
 send trim.
 
-Both stations' dials are narrow: the whole roster spans 4.9 dB on the stereo send and 2 dB on the
-mono one. Full table, per station, with the method for reading it back after a game patch:
-`[[CP2077-Mods/wiki/concepts/the-radio-broadcast-send-chain]]`.
+Both dials are narrow: the whole roster spans 4.9 dB on the stereo send and 2 dB on the mono one.
 
-The consequence for anything that adds a track by cloning bank objects, measured in
-`[[CP2077-Mods/wiki/entities/hardest-to-be-growl-fm]]`: **a segment does not inherit that routing
+To read the table back after a game patch: dump `radio.bnk` with wwiser, take every
+`CAkMusicRanSeqCntr` as a station, read its `OverrideBusId` and its two `NodeInitialFxParams` ids,
+resolve each id to a `CAkFxCustom` **or** a `CAkFxShareSet` in the same bank, and take the graph
+point at `From = 0.0` on its RTPC for `1631578750`. `fxID 0x000529A3` is the stereo send and
+`0x000329A3` the mono one.
+
+`[M]` The consequence for anything that adds a track by cloning bank objects, measured on
+<https://github.com/spuddeh/cp2077-hardest-to-be-growl-fm>: **a segment does not inherit that routing
 from a parent playlist in another bank.** It plays dry, at the source file's own level, about 15 dB
-hot, holding level with distance until the emitter's range cuts it. The node has to carry the
-station's effects, bus and Volume itself.
-`[[CP2077-Mods/wiki/learnings/a-cloned-segment-does-not-inherit-its-parent-across-banks]]`
+hot, holding level with distance until the emitter's range cuts it at 45 to 50 m. Turning the device
+off still stops it, so the station is scheduling it correctly and only the audio is off the chain -
+which is why every script-side check passes. The node has to carry the station's two send effects,
+its bus and its -96 dB Volume itself.
 
 The **CPR Voice Broadcast Send** is CDPR's own plugin and the mechanism behind "tuned to a
 broadcast channel". Every station has its **own pair** of send sharesets, and so does `mod_sfx_radio`.
