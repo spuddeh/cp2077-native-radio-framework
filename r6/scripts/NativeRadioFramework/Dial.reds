@@ -157,17 +157,13 @@ public final static func GetStationName(radioStationType: ERadioStationList) -> 
   return slot >= 0 ? NRF_StationName(slot) : wrappedMethod(radioStationType);
 }
 
-// A channel name is a localization key. A world device hands it to `SetLocalizedTextString`, which
-// resolves a plain key by its STRING, and a row registered at load is found by hash only - by text
-// it resolves to nothing and the widget keeps the previous station's name. `LocKey#<hash>` is the
-// engine's own form for asking by hash, and it is what a device's own name (`LocKey#96`) uses.
+// A channel name is a localization key, the same shape vanilla returns. A world device resolves it
+// by STRING, which only works for a key inside the game's `Gameplay-` namespace - which the plugin's
+// keys are.
 @wrapMethod(RadioStationDataProvider)
 public final static func GetChannelName(radioStationType: ERadioStationList) -> String {
   let slot: Int32 = NRFDial.Slot(EnumInt(radioStationType));
-  if slot < 0 {
-    return wrappedMethod(radioStationType);
-  }
-  return "LocKey#" + ToString(NRF_StationKeyHash(slot));
+  return slot >= 0 ? NameToString(NRF_StationKey(slot)) : wrappedMethod(radioStationType);
 }
 
 // --- dial order ---------------------------------------------------------------------------------
@@ -268,27 +264,30 @@ public final static func GetRadioStations(player: ref<GameObject>) -> array<ref<
 }
 
 // --- the world device's station logo -------------------------------------------------------------
-// SetupStationLogo is a switch over the fourteen that sets only the texture PART, on whatever atlas
-// the widget currently holds. Every station, vanilla or custom, has a RadioStation record whose
-// UIIcon names both the atlas and the part, and RequestSetImage loads both - which is what the
-// vehicle popup does. Going through the record for every station means a custom atlas never sticks
-// on the widget after a vanilla station is selected.
+// The vanilla body is a switch over the fourteen that sets a texture PART on whatever atlas the
+// widget holds, which the .inkwidget fixes to the vanilla station atlas. A custom station's part
+// lives in its own atlas, so the widget is pointed at that atlas and the part set the same way. The
+// fourteen run the vanilla body untouched, with the vanilla atlas put back first in case a custom
+// station replaced it.
 
 @wrapMethod(RadioInkGameController)
 private final func SetupStationLogo() -> Void {
-  // A record's `index` is the DIAL position, not the ERadioStationList value - MinimTech is enum 9
-  // and index 5 - so the device's enum is mapped through the provider before the comparison.
   let station: Int32 = EnumInt(this.GetOwner().GetDevicePS().GetActiveRadioStation());
-  let dial: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(station);
-  let list: array<ref<IScriptable>> = VehiclesManagerDataHelper.GetRadioStations(GetPlayer(GetGameInstance()));
-  let i: Int32 = 0;
-  while i < ArraySize(list) {
-    let row = list[i] as RadioListItemData;
-    if IsDefined(row) && IsDefined(row.m_record) && row.m_record.Index() == dial {
-      InkImageUtils.RequestSetImage(this, this.m_stationLogoWidget, row.m_record.Icon().GetID(), n"");
-      return;
-    }
-    i += 1;
+  if NRFDial.Slot(station) < 0 {
+    inkImageRef.SetAtlasResource(this.m_stationLogoWidget,
+                                 ResRef.FromName(StringToName(NRFIcons.FallbackAtlas())));
+    wrappedMethod();
+    return;
   }
-  wrappedMethod();
+
+  let record = TweakDBInterface.GetRadioStationRecord(NRFDial.Record(station));
+  let icon = IsDefined(record) ? record.Icon() : null;
+  if !IsDefined(icon) {
+    wrappedMethod();
+    return;
+  }
+  inkImageRef.SetAtlasResource(this.m_stationLogoWidget, icon.AtlasResourcePath());
+  if !inkImageRef.SetTexturePart(this.m_stationLogoWidget, icon.AtlasPartName()) {
+    NRFLog(s"device logo: part \(icon.AtlasPartName()) is not in the widget's atlas yet");
+  }
 }
