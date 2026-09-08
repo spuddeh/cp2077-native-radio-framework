@@ -1,9 +1,10 @@
-AudioXL feed probe (measurement build for issue #3).
+AudioXL feed probe (measurement build for issues #1 and #3).
 
 Applies to cp2077-audio-xl at 6e6909f (AudioXL 0.2.0). Logs, into the AudioXL red4ext log, how the
 engine pulls from AudioFeed::Execute per playing id: the first call, any change in requested frames or
-channel config, short or not-ready results, and a summary every 250 calls with the call interval in
-microseconds. Not for release; the log calls run on the audio thread.
+channel config, short or not-ready results, a summary every 250 calls with the call interval in
+microseconds, the engine's slot position at voice start (before the first render overwrites it), and
+every voice retirement with its position. Not for release; the log calls run on the audio thread.
 
     git clone https://github.com/DigitalVixen/cp2077-audio-xl  (or copy _source/cp2077-audio-xl out)
     git apply tools/audioxl-feed-probe.patch
@@ -13,7 +14,7 @@ microseconds. Not for release; the log calls run on the audio thread.
 Build from a short path (D:	mp\...): the SDK's generated headers exceed MAX_PATH under a deep tree.
 
 diff --git a/plugin/src/AudioFeed.cpp b/plugin/src/AudioFeed.cpp
-index 7e5a7eb..57e2744 100644
+index 7e5a7eb..9b9130a 100644
 --- a/plugin/src/AudioFeed.cpp
 +++ b/plugin/src/AudioFeed.cpp
 @@ -2,14 +2,83 @@
@@ -100,22 +101,40 @@ index 7e5a7eb..57e2744 100644
  struct AkBuffer {
    void* pData;
    uint32_t channelConfig;
-@@ -131,6 +200,14 @@ AudioFeed::Voice* AudioFeed::Start(uint32_t aPlayingId, uint16_t aRow, bool aBou
+@@ -131,10 +200,32 @@ AudioFeed::Voice* AudioFeed::Start(uint32_t aPlayingId, uint16_t aRow, bool aBou
      if (BoundVoice* b = BindFor(aPlayingId)) slot->bindStopGen = b->stopGen.load(std::memory_order_relaxed);
    }
    m_rows[aRow].live.fetch_add(1, std::memory_order_relaxed);
 +  {
-+    char line[256];
++    // The engine's own per-slot position, read before the first Render overwrites it.
++    const uint16_t eslot = aBound ? 0xFFFF : reg->SlotForPlayingId(aPlayingId);
++    uint32_t enginePos = 0xFFFFFFFFu;
++    if (eslot != 0xFFFF) {
++      if (const uint32_t* p = reg->PositionForSlot(eslot)) enginePos = *p;
++    }
++    char line[320];
 +    std::snprintf(line, sizeof line,
-+                  "probe start id=%u row=%u bound=%d rate=%u fmtChan=0x%x blockAndBits=0x%x frames=%u start=%u end=%u",
-+                  aPlayingId, aRow, aBound ? 1 : 0, fmt ? fmt->sampleRate : 0, fmt ? fmt->channelConfig : 0,
-+                  fmt ? fmt->blockAndBits : 0, total, slot->startFrame, slot->endFrame);
++                  "probe start id=%u row=%u slot=%u enginePos=%u bound=%d rate=%u fmtChan=0x%x blockAndBits=0x%x "
++                  "frames=%u start=%u end=%u",
++                  aPlayingId, aRow, eslot, enginePos, aBound ? 1 : 0, fmt ? fmt->sampleRate : 0,
++                  fmt ? fmt->channelConfig : 0, fmt ? fmt->blockAndBits : 0, total, slot->startFrame, slot->endFrame);
 +    ProbeLog(line);
 +  }
    return slot;
  }
  
-@@ -319,6 +396,87 @@ void AudioFeed::Render(Voice& v, void* aBuffer) {
+ void AudioFeed::Retire(Voice& aVoice) {
++  if (aVoice.active) {
++    char line[200];
++    std::snprintf(line, sizeof line, "probe retire id=%u row=%u pos=%.0f end=%u rendered=%llu stopping=%d", aVoice.playingId,
++                  aVoice.row, aVoice.pos, aVoice.endFrame, static_cast<unsigned long long>(aVoice.rendered),
++                  aVoice.stopping ? 1 : 0);
++    ProbeLog(line);
++  }
+   if (aVoice.active && aVoice.row < kMaxRows) {
+     auto& live = m_rows[aVoice.row].live;
+     uint32_t cur = live.load(std::memory_order_relaxed);
+@@ -319,6 +410,87 @@ void AudioFeed::Render(Voice& v, void* aBuffer) {
  void __fastcall AudioFeed::Execute(uint32_t aPlayingId, void* aBuffer) {
    auto* self = Get();
    auto* buf = static_cast<AkBuffer*>(aBuffer);
@@ -203,7 +222,7 @@ index 7e5a7eb..57e2744 100644
    self->Sweep();
    Voice* v = self->Find(aPlayingId);
    if (!v) {
-@@ -361,6 +519,10 @@ void __fastcall AudioFeed::Format(uint32_t aPlayingId, void* aFormat) {
+@@ -361,6 +533,10 @@ void __fastcall AudioFeed::Format(uint32_t aPlayingId, void* aFormat) {
    if (row == 0xFFFF) return;
    if (const RowFormat* fmt = reg->FormatForRow(row)) {
      std::memcpy(aFormat, fmt, sizeof(RowFormat));
