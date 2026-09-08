@@ -3,6 +3,8 @@
 ## [0.2.0] - 2026-09-08
 
 ### Added
+- `tools/audioxl-feed-probe.patch`: the AudioXL measurement build behind #1, #3 and #15. Logs how the
+  engine pulls from `AudioFeed::Execute`, the slot position at voice start and every retire.
 - The engine's station NAME table is extended alongside the roster, so a custom station's label is
   a native localization key. Both of its readers reduce the index modulo 14; the division is erased.
 - Station name and song titles registered as real localization entries, inserted into
@@ -16,6 +18,16 @@
   `NRF_StationTrackDuration`. A track with no readable length is dropped and logged.
 
 ### Fixed
+- World-device crackle: `mod_sfx_radio`'s stereo Broadcast Send is trimmed +2.9 dB where every
+  vanilla station sits between -4 and +0.9 dB, so a master on 0 dBFS wrapped in the next 16-bit
+  stage at world devices. Every row is now trimmed to 0.56 through `AudioXLNative.SetGain` after
+  registration (`RegisterSoundEx`'s gain argument never reaches the samples), with a bounded retry
+  for a row AudioXL queued. New optional manifest key `gain` (0..1) and native `NRF_StationGain`.
+  Measured: gain 0.25 in the samples took 8,128 half-scale jumps in 160 s to 0. (#3)
+- Each track played twice on world devices: `Duration.hpp` counted the raw Xing frame count while
+  dr_mp3 trims the LAME gapless delay and padding, so the voice ended 27 to 47 ms inside its own
+  slot and the engine re-posted the same track. The reader now subtracts the trim with dr_mp3's
+  arithmetic. (#15)
 - The station was silent on every receiver when its registration waited for AudioXL to report
   durations: the engine builds its station set while `cooked_metadata` loads, and a station added
   afterwards is never constructed. Event rows, membership, the station entry and the text are now all
