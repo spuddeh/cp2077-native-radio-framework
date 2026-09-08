@@ -37,33 +37,49 @@ world device plays or stays silent by its own state, switching stations stops th
 | | `mod_sfx_radio` (custom row) | a vanilla station playlist |
 | --- | --- | --- |
 | object | `CAkSound 529198484`, source Wwise Audio Input | `CAkMusicRanSeqCntr` (`375417660` Growl FM, `440066888`, ...) |
-| insert effects | **Wwise Time Stretch** `758059012`, CPR Voice Broadcast Send `772871769`, CPR Voice Broadcast Send `385769109` | CPR Voice Broadcast Send x2 |
+| insert effects | **Wwise Time Stretch** `758059012`, CPR Voice Broadcast Send `772871769` (mono), CPR Voice Broadcast Send `385769109` (stereo) | its own pair of Broadcast Send sharesets, one mono and one stereo (26 pairs in `radio.bnk`, one per playlist) |
 | positioning | 3D, attenuation enabled, no attenuation object of its own | same bits |
 | bus | `918052088` -> `1151059771` (Parametric EQ) -> `2996874604` -> `1836253337` -> Master | `666212655` (Parametric EQ) -> `music` -> Master |
 | sliders | RTPC `volume_music` on the sound | the music bus |
 | base props | Volume -96 dB, GameAuxSendVolume -96 dB | none |
 
 The **CPR Voice Broadcast Send** is CDPR's own plugin and the mechanism behind "tuned to a
-broadcast channel": one of its RTPCs is `radio_broadcast_channel` (0..255), and the four
-attenuations in `mod.bnk` belong to the occlusion, room, street and city sounds, not to this one.
-Vanilla stations go through the same two sends, so the send is not the difference.
+broadcast channel". Every station has its **own pair** of send sharesets, and so does `mod_sfx_radio`.
+The mono send (`207267`) takes the RTPC `radio_broadcast_channel` (default 8) and feeds the Radioport;
+the stereo send (`338339`) takes `radio_broadcast_channel_left` and `_right` (defaults 58) and feeds
+the world-device receive sounds. Both carry a curve on `radio_broadcast_mute` (`1631578750`, default
+0 = unmuted, 1 = -96 dB), and **the curve's value at 0 is a per-station level trim**. wwiser stores a
+dB-scaled curve point as `10^(dB/20) - 1`; decoded that way every vanilla trim is a whole or half dB.
+The four attenuations in `mod.bnk` belong to the occlusion, room, street and city sounds, not to
+this one.
 
-**The Time Stretch is the only structural difference, and it is cleared as the crackle.** It is
-the only instance of that plugin in all three banks and sits on the custom-radio sound alone. Its
-RTPC (`1400903616`, name unresolved) maps 0 to 200 % and 1 or more to 100 %, which reads as time
-dilation: `[I]` the plugin exists so a custom sound slows with the world when a bus-level pitch
-shift cannot reach an Audio Input source. `[M]` Wwise 2023.1 Help, Time Stretch properties: "100%
-corresponds to no Time Stretch", and the value "may be smoothly changed during playback without
-additional artifacts". And it sits upstream of both sends, so anything it did would be heard on
-every receiver, while the crackle is heard at world devices only.
+`[M]` **The trims are the difference, and they are the crackle** (issue
+[#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3)):
 
-`[M]` **The crackle is device-only, on two stations, with MP3 at 44.1 kHz, MP3 at 48 kHz and WAV at
-48 kHz alike**, so neither the files nor the sample rate is the cause. It is born after the point
-where a device's copy diverges from the Radioport's: in the engine's handling of the `Radio_Emitter`
-on the device entity (`radio_1.ent`: `gameAudioEmitterComponent`, `EmitterType Radio_Emitter`,
-acoustics `acousticsemitter_default_occl_obstr_ignore_0_5m` with occlusion and obstruction on). Open
-candidates: a second Audio Input voice on the emitter with its own cursor, the emitter's occlusion
-and obstruction processing, or the RTPC-driven EQ on the mod bus chain.
+| sound | stereo send (world devices) | mono send (Radioport) |
+| --- | --- | --- |
+| `mod_sfx_radio` | **+2.9 dB** | -2.0 dB |
+| hottest vanilla station | +0.9 dB | -5.0 dB |
+| Growl FM | -4.0 dB | -5.0 dB |
+| quietest vanilla station | -4.0 dB | -7.0 dB |
+
+dr_mp3 decodes to int16 and clamps, so a modern master reaches the send already on 0 dBFS. The
+stereo send adds 2.9 dB and the next 16-bit stage wraps: the recorded artefact is a bass peak whose
+samples flip sign in runs of one to three while keeping their magnitude, 6,250 half-scale jumps in
+160 s of *Afterlife* on Tool FM against 4 in the same song on Growl FM at the same device, and 95 %
+of them where the source peaks above -2.1 dBFS. The Radioport sits on the mono send at -2 dB, so a
+clamped source stays under the rail there.
+
+The **Time Stretch** is the other structural difference and it is not the crackle: its RTPC
+(`1400903616`, name unresolved, default 1) maps 0 to 200 % and 1 or more to 100 %, `[M]` Wwise 2023.1
+Help says 100 % is no stretch, and the artefact has no grain period. `[I]` It exists so a custom
+sound slows with the world when a bus-level pitch shift cannot reach an Audio Input source.
+
+**Two ways to meet vanilla.** A per-row gain applied in the samples (AudioXL has `SetGain`;
+nothing calls it at registration) with a default near 0.45, which lands the stereo send at Growl FM's
+trim and leaves the mono send 3.9 dB under it. Or two curve points changed in `mod.bnk`, shipped as
+an archive, which is exact on both receivers and corrects every REDmod custom station too, at the
+price of being a vanilla-file replacement.
 
 ### The `axl_*` types are not an alternative
 
@@ -98,7 +114,7 @@ From its source, all `[M]`:
 | Right song after tuning back, from 0:00 | the engine picked the track from its clock; the renderer starts at 0, and the engine hands no offset | `[M]` both sides ([#1](https://github.com/spuddeh/cp2077-native-radio-framework/issues/1)) |
 | Each track plays twice on a world device | declared duration longer than the decoded length by the LAME gapless trim; the engine re-posts the slot | `[M]` cause; fix awaiting a run ([#15](https://github.com/spuddeh/cp2077-native-radio-framework/issues/15)) |
 | World devices quieter; car and Radioport fine | `818835100`'s attenuation, tuned for a broadcast SFX, not music. `RegisterSoundEx`'s `distance` is the untested knob | `[I]` ([#2](https://github.com/spuddeh/cp2077-native-radio-framework/issues/2)) |
-| Static and crackle, at devices only | not the files, not the rate, not the Time Stretch (all measured). Born on the device emitter's own path; see above | `[I]` ([#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3)) |
+| Static and crackle, at devices only | `mod_sfx_radio`'s stereo send is trimmed +2.9 dB, 3 to 7 dB above every vanilla station; a source clamped at 0 dBFS wraps in the next 16-bit stage | `[M]` ([#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3)) |
 | Hundreds of MB of RAM | decode at registration | `[M]` ([#4](https://github.com/spuddeh/cp2077-native-radio-framework/issues/4)) |
 
 ## The engine never hands a start offset on this path
