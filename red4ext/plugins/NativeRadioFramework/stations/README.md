@@ -30,8 +30,8 @@ soundbank, no redscript. Everything else is built from the manifest at load.
 | `name` | The station's own CName. It must be unique across every installed station mod. |
 | `displayName` | The label the game shows. Put the frequency at the front. |
 | `speaker` | Optional. The station's DJ. Defaults to `None`. |
-| `icon` | Optional. An inkatlas part name. Defaults to the framework's own glyph. |
-| `atlas` | Optional. The inkatlas holding that part. Required when `icon` is set. |
+| `icon` | Optional. An inkatlas part name. Defaults to the game's own `no_station` glyph. |
+| `atlas` | Optional. The inkatlas holding that part, as a depot path (`mymod\gui\icons.inkatlas`, no `base\`). Required when `icon` is set. |
 | `tracks[].file` | An audio file, relative to this manifest's folder. |
 | `tracks[].title` | Optional. The song title, shown as written. |
 
@@ -54,6 +54,15 @@ space or an accent in it never reaches an event name.
 **No Wwise ids, no `index`, no TweakDB records.** A station's index must equal the roster slot the
 framework assigned, which depends on how many station mods are installed and in what order they
 were found - so no mod can know its own in advance. The framework creates the records.
+
+## The icon
+
+Import the texture the way the game's own station atlas is built, or it renders wrong:
+`TEXG_Generic_UI`, `TRF_TrueColor`, `TCM_QualityColor`, no mip chain, not streamable, **alpha
+premultiplied** and **vertically flipped on import**. The game's UI textures store black under every
+transparent pixel; a PNG with white there shows as a white box, and an unflipped import shows upside
+down. In WolvenKit both are import switches. The atlas part's UV rect selects the used region, so the
+sheet can be padded to a multiple of 4.
 
 ## The audio
 
