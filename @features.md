@@ -25,7 +25,8 @@
 
 ## Verified in game
 
-- Audio on all three receivers, two stations installed side by side, MP3 and WAV tracks.
+- Audio on all three receivers, three stations installed side by side, MP3, WAV, FLAC and OGG tracks.
+- A station naming no icon shows the game's own `no_station` glyph.
 - Station name and icon on the Radioport, the vehicle selector, the dashboard and world devices.
 - No crackle at a world device: 0 wrap artefacts in 550 s of capture, true peak -1.4 dBFS, a custom
   station inside the vanilla loudness spread.
@@ -41,7 +42,6 @@
 ## Awaiting in-game verification
 
 - The Radioport level against a vanilla station, by capture rather than by ear.
-- Song titles outside the Radioport.
 
 ## Planned
 
