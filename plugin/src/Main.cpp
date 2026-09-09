@@ -750,15 +750,17 @@ void PatchRoster()
         names[kVanillaCount + i] = Fnv1a64(StationKey(g_stations[i].name));
     }
 
-    const int32_t dispResolve =
-        static_cast<int32_t>(reinterpret_cast<uintptr_t>(table) -
-                             (reinterpret_cast<uintptr_t>(resolve) + kResolveLeaDisp + 4));
-    const int32_t dispIndex =
-        static_cast<int32_t>(reinterpret_cast<uintptr_t>(table) -
-                             (reinterpret_cast<uintptr_t>(indexToName) + kIndexLeaDisp + 4));
-    const int32_t dispNames =
-        static_cast<int32_t>(reinterpret_cast<uintptr_t>(names) -
-                             (reinterpret_cast<uintptr_t>(nameReader) + kNameLeaDisp + 4));
+    // Each table is allocated within reach of ONE reader, and the other reader of the same table
+    // is only near it by the layout of this build, so every displacement is range-checked and the
+    // patch abandoned if one does not fit. Nothing has been written yet.
+    int32_t dispResolve = 0, dispIndex = 0, dispNames = 0;
+    if (!Rel32(reinterpret_cast<uintptr_t>(resolve) + kResolveLeaDisp + 4, reinterpret_cast<uintptr_t>(table), dispResolve) ||
+        !Rel32(reinterpret_cast<uintptr_t>(indexToName) + kIndexLeaDisp + 4, reinterpret_cast<uintptr_t>(table), dispIndex) ||
+        !Rel32(reinterpret_cast<uintptr_t>(nameReader) + kNameLeaDisp + 4, reinterpret_cast<uintptr_t>(names), dispNames))
+    {
+        Log("a roster table is out of rip-relative reach of one of its readers - nothing patched");
+        return;
+    }
     const uint8_t boundTotal = static_cast<uint8_t>(total);
     const uint8_t boundLast = static_cast<uint8_t>(total - 1);
 

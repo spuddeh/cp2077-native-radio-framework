@@ -58,6 +58,9 @@
   `NRF_StationTrackDuration`. A track with no readable length is dropped and logged.
 
 ### Fixed
+- Every rip-relative displacement the roster patch writes is range-checked before the cast, and the
+  patch is abandoned if one does not fit. Each table is allocated within reach of one reader; the
+  other reader of the same table was only in reach by the layout of the 2.31 image. (#11)
 - World-device crackle: `mod_sfx_radio`'s stereo Broadcast Send is trimmed +2.9 dB where every
   vanilla station sits between -4 and +0.9 dB, so a master on 0 dBFS wrapped in the next 16-bit
   stage at world devices. First trimmed to 0.56 in the samples through `AudioXLNative.SetGain`,
