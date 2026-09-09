@@ -22,6 +22,7 @@
 #include <RED4ext/RED4ext.hpp>
 
 #include "Duration.hpp"
+#include "Manifest.hpp"
 
 #include <algorithm>
 #include <cstdlib>
@@ -59,6 +60,27 @@ constexpr size_t kIndexLeaDisp   = 0x0F;
 
 constexpr size_t kVehicleCmpOpcode = 0x5E;  // 83 FF 0E   cmp edi, 14
 constexpr size_t kVehicleCmpImm    = 0x60;
+
+// The vehicle receiver's NEXT-station step, `+0x68` to `+0x92` of the same function. It takes the
+// current index through a dial-order table (a switch on 0..13), adds one, reduces modulo 14 with a
+// magic-number division, maps back through the inverse table (another switch on 0..13) and drops
+// the id bias. A custom index gets a wrong answer from each table before the modulo is reached, so
+// the operand cannot be widened and the block is DETOURED whole: a stub calls the game's own two
+// tables for the fourteen and uses the slot index as the dial position for everything past them.
+constexpr size_t kVehicleStepFrom     = 0x68;  // 8B 4B 0C         mov ecx, [rbx+0xc]
+constexpr size_t kVehicleStepToDial   = 0x6B;  // E8 rel32         call index -> dial position
+constexpr size_t kVehicleStepInc      = 0x70;  // 8D 48 01         lea ecx, [rax+1]
+constexpr size_t kVehicleStepMagic    = 0x73;  // B8 25 49 92 24   mov eax, 0x24924925
+constexpr size_t kVehicleStepImul     = 0x85;  // 6B C0 0E         imul eax, eax, 14
+constexpr size_t kVehicleStepFromDial = 0x8A;  // E8 rel32         call dial position -> internal id
+constexpr size_t kVehicleStepBias     = 0x8F;  // 8D 78 F8         lea edi, [rax-8]
+constexpr size_t kVehicleStepTo       = 0x92;  // 89 7B 0C         mov [rbx+0xc], edi - the stub returns here
+
+constexpr uint8_t kMovEcxRbx0c[] = {0x8B, 0x4B, 0x0C};
+constexpr uint8_t kLeaEcxRax1[] = {0x8D, 0x48, 0x01};
+constexpr uint8_t kLeaEdiRaxM8[] = {0x8D, 0x78, 0xF8};
+constexpr uint8_t kMovRbx0cEdi[] = {0x89, 0x7B, 0x0C};
+constexpr uint8_t kCallRel32[] = {0xE8};
 
 // The station NAME table's reader, offsets from its own start. It takes the station index in edx
 // and reduces it MODULO 14 before the bounds check, so **slot 14 wraps to 0 and a custom station
@@ -114,35 +136,9 @@ constexpr uint8_t kCmpEdi[] = {0x83, 0xFF};
 constexpr int kVanillaCount = 14;
 constexpr int kMaxStations = 127;  // both bounds are 8-bit immediates
 
-// A track is an audio FILE and a title. Nothing else is written by hand: the length is read from
-// the file's own headers at load, and AudioXL registers the file and supplies the Wwise id. A
-// manifest that carried a duration would be a second place for it to be wrong.
-struct Track
-{
-    std::string file;       // relative to the station's own manifest folder
-    std::string title;      // the song title as it is shown, plain text, may be empty
-    float duration = 0.0f;  // seconds, from the file's headers - what the station schedules against
-};
-
-// The level trim every station gets unless its manifest says otherwise. **A station's level belongs
-// on its send, not in its samples**, and the framework's own routing bank puts it there, so the
-// default here leaves the audio alone. The correction for the game's own custom-radio object, whose
-// send reaches a world device 3 to 7 dB hotter than any vanilla station, is applied in script and
-// only on the path that uses that object.
-constexpr float kDefaultGain = 1.0f;
-
-struct Station
-{
-    std::string name;         // the station CName, e.g. radio_station_20_tool
-    std::string displayName;  // the label the UI shows, plain text
-    std::string icon;         // an inkatlas part name, or empty for the framework's own glyph
-    std::string atlas;        // the inkatlas resource holding that part, or empty for the framework's
-    std::string speaker;      // audioRadioSpeakerType - the station's DJ
-    float gain = kDefaultGain; // level trim applied to every track's samples, 0..1; see NRF_StationGain
-    std::vector<Track> tracks;
-    std::string source;       // which manifest it came from, for logging
-    std::string folder;       // the manifest's own directory, which track files are relative to
-};
+using nrf::kDefaultGain;
+using nrf::Station;
+using nrf::Track;
 
 // Vanilla puts a LOCALIZATION KEY in the engine's name table and in every audioRadioTrack row, and
 // the UI resolves it. So the framework mints a key per station and registers the text against it,
@@ -248,241 +244,6 @@ std::string Hex(uintptr_t aValue)
     return buf;
 }
 
-// --- a very small JSON reader -----------------------------------------------------------------
-// Only what a station manifest needs: top-level strings and one array of objects. Anything it does
-// not understand is ignored rather than rejected, so a manifest can carry fields for later.
-
-// The index of the quote that closes the string literal opening at aOpen, honouring escapes.
-size_t JsonStringEnd(const std::string& aText, size_t aOpen)
-{
-    for (size_t i = aOpen + 1; i < aText.size(); ++i)
-    {
-        if (aText[i] == '\\')
-        {
-            ++i;
-        }
-        else if (aText[i] == '"')
-        {
-            return i;
-        }
-    }
-    return std::string::npos;
-}
-
-// A JSON string literal's value. An escaped backslash becomes one backslash, which a depot path is
-// full of; a \u escape outside ASCII becomes UTF-8.
-std::string JsonUnescape(const std::string& aRaw)
-{
-    std::string out;
-    out.reserve(aRaw.size());
-    for (size_t i = 0; i < aRaw.size(); ++i)
-    {
-        const char c = aRaw[i];
-        if (c != '\\' || i + 1 >= aRaw.size())
-        {
-            out += c;
-            continue;
-        }
-        const char e = aRaw[++i];
-        switch (e)
-        {
-        case 'n': out += '\n'; break;
-        case 't': out += '\t'; break;
-        case 'r': out += '\r'; break;
-        case 'b': out += '\b'; break;
-        case 'f': out += '\f'; break;
-        case 'u':
-        {
-            if (i + 4 >= aRaw.size())
-            {
-                return out;
-            }
-            const unsigned code = static_cast<unsigned>(std::strtoul(aRaw.substr(i + 1, 4).c_str(), nullptr, 16));
-            i += 4;
-            if (code < 0x80)
-            {
-                out += static_cast<char>(code);
-            }
-            else if (code < 0x800)
-            {
-                out += static_cast<char>(0xC0 | (code >> 6));
-                out += static_cast<char>(0x80 | (code & 0x3F));
-            }
-            else
-            {
-                out += static_cast<char>(0xE0 | (code >> 12));
-                out += static_cast<char>(0x80 | ((code >> 6) & 0x3F));
-                out += static_cast<char>(0x80 | (code & 0x3F));
-            }
-            break;
-        }
-        default: out += e; break;  // backslash, quote, slash, and anything unknown: the character itself
-        }
-    }
-    return out;
-}
-
-// A bare number after `"key":` - the manifest's only numeric field. Anything that is not a number,
-// or a key that is absent, gives the default.
-float JsonNumber(const std::string& aText, const std::string& aKey, float aDefault)
-{
-    const std::string needle = "\"" + aKey + "\"";
-    size_t at = aText.find(needle);
-    while (at != std::string::npos)
-    {
-        size_t cursor = at + needle.size();
-        while (cursor < aText.size() && std::isspace(static_cast<unsigned char>(aText[cursor])))
-            ++cursor;
-        if (cursor < aText.size() && aText[cursor] == ':')
-        {
-            ++cursor;
-            while (cursor < aText.size() && std::isspace(static_cast<unsigned char>(aText[cursor])))
-                ++cursor;
-            char* end = nullptr;
-            const double v = std::strtod(aText.c_str() + cursor, &end);
-            if (end && end != aText.c_str() + cursor)
-                return static_cast<float>(v);
-            return aDefault;
-        }
-        at = aText.find(needle, at + 1);
-    }
-    return aDefault;
-}
-
-std::string JsonString(const std::string& aText, const std::string& aKey)
-{
-    const std::string needle = "\"" + aKey + "\"";
-    size_t at = aText.find(needle);
-    if (at == std::string::npos)
-    {
-        return {};
-    }
-    at = aText.find(':', at + needle.size());
-    if (at == std::string::npos)
-    {
-        return {};
-    }
-    const size_t open = aText.find('"', at);
-    if (open == std::string::npos)
-    {
-        return {};
-    }
-    const size_t close = JsonStringEnd(aText, open);
-    return close == std::string::npos ? std::string() : JsonUnescape(aText.substr(open + 1, close - open - 1));
-}
-
-// A depot path uses backslashes. A manifest may write either.
-std::string DepotPath(std::string aPath)
-{
-    for (auto& c : aPath)
-    {
-        if (c == '/')
-        {
-            c = '\\';
-        }
-    }
-    return aPath;
-}
-
-// tracks: [ { "file": "...", "title": "..." }, ... ]
-std::vector<Track> JsonTracks(const std::string& aText)
-{
-    std::vector<Track> out;
-    size_t at = aText.find("\"tracks\"");
-    if (at == std::string::npos)
-    {
-        return out;
-    }
-    const size_t open = aText.find('[', at);
-    if (open == std::string::npos)
-    {
-        return out;
-    }
-
-    // Walks the array one object at a time, stepping over string literals so a title holding a
-    // bracket or a brace cannot end the array or an object early.
-    size_t cursor = open + 1;
-    while (cursor < aText.size())
-    {
-        const char c = aText[cursor];
-        if (c == ']')
-        {
-            break;
-        }
-        if (c == '"')
-        {
-            const size_t end = JsonStringEnd(aText, cursor);
-            cursor = end == std::string::npos ? aText.size() : end + 1;
-            continue;
-        }
-        if (c != '{')
-        {
-            ++cursor;
-            continue;
-        }
-        size_t objClose = cursor + 1;
-        while (objClose < aText.size() && aText[objClose] != '}')
-        {
-            if (aText[objClose] == '"')
-            {
-                const size_t end = JsonStringEnd(aText, objClose);
-                objClose = end == std::string::npos ? aText.size() : end + 1;
-                continue;
-            }
-            ++objClose;
-        }
-        if (objClose >= aText.size())
-        {
-            break;
-        }
-        const std::string chunk = aText.substr(cursor, objClose - cursor + 1);
-
-        Track track;
-        track.file = JsonString(chunk, "file");
-        track.title = JsonString(chunk, "title");
-        if (!track.file.empty())
-        {
-            out.push_back(track);
-        }
-        cursor = objClose + 1;
-    }
-    return out;
-}
-
-std::vector<std::string> JsonStringArray(const std::string& aText, const std::string& aKey)
-{
-    std::vector<std::string> out;
-    const std::string needle = "\"" + aKey + "\"";
-    size_t at = aText.find(needle);
-    if (at == std::string::npos)
-    {
-        return out;
-    }
-    const size_t open = aText.find('[', at);
-    const size_t close = aText.find(']', open == std::string::npos ? at : open);
-    if (open == std::string::npos || close == std::string::npos)
-    {
-        return out;
-    }
-    size_t cursor = open;
-    while (true)
-    {
-        const size_t a = aText.find('"', cursor);
-        if (a == std::string::npos || a > close)
-        {
-            break;
-        }
-        const size_t b = aText.find('"', a + 1);
-        if (b == std::string::npos || b > close)
-        {
-            break;
-        }
-        out.push_back(aText.substr(a + 1, b - a - 1));
-        cursor = b + 1;
-    }
-    return out;
-}
-
 std::filesystem::path PluginDirectory()
 {
     HMODULE self = nullptr;
@@ -524,27 +285,28 @@ void LoadManifests()
             continue;
         }
 
-        std::ifstream in(file);
+        Station station;
+        station.source = Utf8(entry.path().filename());
+        // Kept as UTF-8. A manifest is UTF-8 and a track file may carry any script in its name, and
+        // std::filesystem::path(std::string) on Windows reads the system code page, not UTF-8.
+        station.folder = Utf8(entry.path());
+        const std::string where = station.source + "/station.json";
+
+        std::ifstream in(file, std::ios::binary);
+        if (!in)
+        {
+            Log(where + ": cannot be opened - skipped");
+            continue;
+        }
         std::stringstream buffer;
         buffer << in.rdbuf();
         const std::string text = buffer.str();
 
-        Station station;
-        station.name = JsonString(text, "name");
-        station.displayName = JsonString(text, "displayName");
-        station.icon = JsonString(text, "icon");
-        station.atlas = DepotPath(JsonString(text, "atlas"));
-        station.speaker = JsonString(text, "speaker");
-        station.gain = std::clamp(JsonNumber(text, "gain", kDefaultGain), 0.0f, 1.0f);
-        station.tracks = JsonTracks(text);
-        station.source = entry.path().filename().string();
-        // Kept as UTF-8. A manifest is UTF-8 and a track file may carry any script in its name, and
-        // std::filesystem::path(std::string) on Windows reads the system code page, not UTF-8.
-        station.folder = Utf8(entry.path());
-
-        if (station.name.empty())
+        // Every fault is logged as <Mod>/station.json:<line>: <what>, and a manifest with one is
+        // skipped whole. A station loaded with a field missing looks like a bug somewhere else.
+        if (!nrf::ReadManifest(text, where, station, [](const std::string& aLine) { Log(aLine); }))
         {
-            Log(station.source + ": manifest has no \"name\" - skipped");
+            Log(where + ": skipped");
             continue;
         }
         // Each file's length, from its headers. The engine reads the event table while it boots,
@@ -624,6 +386,93 @@ void* AllocateNear(uintptr_t aAnchor, size_t aSize)
     return nullptr;
 }
 
+// The stub the vehicle receiver's next-station step is detoured to. Register use matches the block
+// it replaces: ecx, eax and edx are scratch there, edi is the result, rbx holds the receiver, and
+// both game tables are leaf functions the original block already called from this same stack.
+//
+//   mov  ecx, [rbx+0xc]         the current ERadioStationList value
+//   cmp  ecx, 14
+//   jae  custom_in
+//   call index_to_dial          eax = dial position, 0..13
+//   jmp  have_dial
+// custom_in:
+//   mov  eax, ecx               a custom station's dial position is its slot
+// have_dial:
+//   inc  eax
+//   xor  edx, edx
+//   mov  ecx, total             a 32-bit immediate: this bound is not one of the 8-bit ones
+//   div  ecx                    edx = (position + 1) % total
+//   mov  ecx, edx
+//   cmp  ecx, 14
+//   jae  custom_out
+//   call dial_to_id             eax = internal id, 8..21
+//   lea  edi, [rax-8]
+//   jmp  resume
+// custom_out:
+//   mov  edi, ecx
+//   jmp  resume
+constexpr size_t kStepStubSize = 0x37;
+
+bool Rel32(uintptr_t aFrom, uintptr_t aTo, int32_t& aOut)
+{
+    const int64_t d = static_cast<int64_t>(aTo) - static_cast<int64_t>(aFrom);
+    if (d > INT32_MAX || d < INT32_MIN)
+    {
+        return false;
+    }
+    aOut = static_cast<int32_t>(d);
+    return true;
+}
+
+bool BuildStepStub(uint8_t* aStub, uintptr_t aIndexToDial, uintptr_t aDialToId, uintptr_t aResume,
+                   uint32_t aTotal)
+{
+    const auto base = reinterpret_cast<uintptr_t>(aStub);
+    int32_t toDial = 0, toId = 0, resumeA = 0, resumeB = 0;
+    if (!Rel32(base + 0x0D, aIndexToDial, toDial) || !Rel32(base + 0x28, aDialToId, toId) ||
+        !Rel32(base + 0x30, aResume, resumeA) || !Rel32(base + 0x37, aResume, resumeB))
+    {
+        return false;
+    }
+
+    const uint8_t vanilla = static_cast<uint8_t>(kVanillaCount);
+    uint8_t code[kStepStubSize] = {
+        0x8B, 0x4B, 0x0C,        // 00  mov ecx, [rbx+0xc]
+        0x83, 0xF9, vanilla,     // 03  cmp ecx, 14
+        0x73, 0x07,              // 06  jae 0F
+        0xE8, 0, 0, 0, 0,        // 08  call index_to_dial
+        0xEB, 0x02,              // 0D  jmp 11
+        0x8B, 0xC1,              // 0F  mov eax, ecx
+        0xFF, 0xC0,              // 11  inc eax
+        0x33, 0xD2,              // 13  xor edx, edx
+        0xB9, 0, 0, 0, 0,        // 15  mov ecx, total
+        0xF7, 0xF1,              // 1A  div ecx
+        0x8B, 0xCA,              // 1C  mov ecx, edx
+        0x83, 0xF9, vanilla,     // 1E  cmp ecx, 14
+        0x73, 0x0D,              // 21  jae 30
+        0xE8, 0, 0, 0, 0,        // 23  call dial_to_id
+        0x8D, 0x78, 0xF8,        // 28  lea edi, [rax-8]
+        0xE9, 0, 0, 0, 0,        // 2B  jmp resume
+        0x8B, 0xF9,              // 30  mov edi, ecx
+        0xE9, 0, 0, 0, 0,        // 32  jmp resume
+    };
+    std::memcpy(code + 0x09, &toDial, sizeof(toDial));
+    std::memcpy(code + 0x16, &aTotal, sizeof(aTotal));
+    std::memcpy(code + 0x24, &toId, sizeof(toId));
+    std::memcpy(code + 0x2C, &resumeA, sizeof(resumeA));
+    std::memcpy(code + 0x33, &resumeB, sizeof(resumeB));
+    std::memcpy(aStub, code, sizeof(code));
+    return true;
+}
+
+// The target of a rel32 call or jump at aAt.
+uintptr_t Rel32Target(const uint8_t* aAt)
+{
+    int32_t rel = 0;
+    std::memcpy(&rel, aAt + 1, sizeof(rel));
+    return reinterpret_cast<uintptr_t>(aAt) + 5 + rel;
+}
+
 bool WriteBytes(void* aAt, const void* aData, size_t aLen)
 {
     DWORD old = 0;
@@ -687,6 +536,14 @@ void PatchRoster()
         {indexToName + kIndexCmpOpcode, kCmpEax, sizeof(kCmpEax), "indexToName: cmp eax, imm8"},
         {indexToName + kIndexLeaOpcode, kLeaRdx, sizeof(kLeaRdx), "indexToName: lea rdx, [rip+disp32]"},
         {vehicleSet + kVehicleCmpOpcode, kCmpEdi, sizeof(kCmpEdi), "vehicleSet: cmp edi, imm8"},
+        {vehicleSet + kVehicleStepFrom, kMovEcxRbx0c, sizeof(kMovEcxRbx0c), "vehicleSet: mov ecx, [rbx+0xc]"},
+        {vehicleSet + kVehicleStepToDial, kCallRel32, sizeof(kCallRel32), "vehicleSet: call index->dial"},
+        {vehicleSet + kVehicleStepInc, kLeaEcxRax1, sizeof(kLeaEcxRax1), "vehicleSet: lea ecx, [rax+1]"},
+        {vehicleSet + kVehicleStepMagic, kMovEaxImm, sizeof(kMovEaxImm), "vehicleSet: mov eax, 0x24924925"},
+        {vehicleSet + kVehicleStepImul, kImulEax14, sizeof(kImulEax14), "vehicleSet: imul eax, eax, 14"},
+        {vehicleSet + kVehicleStepFromDial, kCallRel32, sizeof(kCallRel32), "vehicleSet: call dial->id"},
+        {vehicleSet + kVehicleStepBias, kLeaEdiRaxM8, sizeof(kLeaEdiRaxM8), "vehicleSet: lea edi, [rax-8]"},
+        {vehicleSet + kVehicleStepTo, kMovRbx0cEdi, sizeof(kMovRbx0cEdi), "vehicleSet: mov [rbx+0xc], edi"},
         {nameReader + kNameMovR8, kMovR8Edx, sizeof(kMovR8Edx), "nameReader: mov r8d, edx"},
         {nameReader + kNameDivFrom, kMovEaxImm, sizeof(kMovEaxImm), "nameReader: mov eax, 0x24924925"},
         {nameReader + kNameImul, kImulEax14, sizeof(kImulEax14), "nameReader: imul eax, eax, 14"},
@@ -737,6 +594,42 @@ void PatchRoster()
         Log("could not allocate the new name table within rip-relative reach");
         return;
     }
+
+    // The next-station stub, built and made executable before any game byte is touched, so a
+    // failure here still leaves the game unpatched. Its two call targets are read from the block it
+    // replaces rather than resolved by hash: the block is verified above, so they are the game's.
+    void* freshStub = AllocateNear(reinterpret_cast<uintptr_t>(vehicleSet), kStepStubSize);
+    if (!freshStub)
+    {
+        Log("could not allocate the next-station stub within rip-relative reach");
+        return;
+    }
+    auto* stub = static_cast<uint8_t*>(freshStub);
+    if (!BuildStepStub(stub, Rel32Target(vehicleSet + kVehicleStepToDial),
+                       Rel32Target(vehicleSet + kVehicleStepFromDial),
+                       reinterpret_cast<uintptr_t>(vehicleSet + kVehicleStepTo), static_cast<uint32_t>(total)))
+    {
+        Log("the next-station stub cannot reach the game's dial tables - nothing patched");
+        return;
+    }
+    DWORD oldProtect = 0;
+    if (!VirtualProtect(stub, kStepStubSize, PAGE_EXECUTE_READ, &oldProtect))
+    {
+        Log("could not make the next-station stub executable - nothing patched");
+        return;
+    }
+    FlushInstructionCache(GetCurrentProcess(), stub, kStepStubSize);
+
+    int32_t dispStub = 0;
+    if (!Rel32(reinterpret_cast<uintptr_t>(vehicleSet + kVehicleStepFrom + 5), reinterpret_cast<uintptr_t>(stub), dispStub))
+    {
+        Log("the next-station stub is out of reach of its site - nothing patched");
+        return;
+    }
+    uint8_t detour[kVehicleStepTo - kVehicleStepFrom];
+    std::memset(detour, 0x90, sizeof(detour));
+    detour[0] = 0xE9;
+    std::memcpy(detour + 1, &dispStub, sizeof(dispStub));
 
     auto* table = static_cast<uint64_t*>(fresh);
     std::memcpy(table, roster, kVanillaCount * sizeof(uint64_t));
@@ -800,7 +693,8 @@ void PatchRoster()
                     WriteBytes(resolve + kResolveCmpImm, &boundTotal, 1) &&
                     WriteBytes(indexToName + kIndexCmpImm, &boundLast, 1) &&
                     WriteBytes(nameReader + kNameCmpImm, &boundLast, 1) &&
-                    WriteBytes(vehicleSet + kVehicleCmpImm, &boundTotal, 1);
+                    WriteBytes(vehicleSet + kVehicleCmpImm, &boundTotal, 1) &&
+                    WriteBytes(vehicleSet + kVehicleStepFrom, detour, sizeof(detour));
 
     if (!ok)
     {
@@ -816,7 +710,8 @@ void PatchRoster()
             std::to_string(kVanillaCount + i + 8) + "): " + g_stations[i].name);
     }
     Log("roster patched to " + std::to_string(total) + " stations at " +
-        Hex(reinterpret_cast<uintptr_t>(table)));
+        Hex(reinterpret_cast<uintptr_t>(table)) + ", vehicle next-station step detoured to " +
+        Hex(reinterpret_cast<uintptr_t>(stub)));
 }
 
 // --- the script side of the manifest -----------------------------------------------------------

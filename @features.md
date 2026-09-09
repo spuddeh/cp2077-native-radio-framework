@@ -17,6 +17,10 @@
   fallback if the bank does not load.
 - An optional level trim per station (`gain`, 0..1), applied in the samples through AudioXL on top of
   the send trim.
+- A manifest is read by a strict JSON parser and checked field by field. Every fault is logged with
+  the file and the line, and a manifest with one is skipped whole. Covered by `plugin/tests/`.
+- Next-station in a car steps past the vanilla fourteen into the custom stations, in slot order, and
+  wraps at the end of the roster.
 
 ## Verified in game
 
@@ -34,20 +38,21 @@
 
 - The Radioport level against a vanilla station, by capture rather than by ear.
 - Song titles outside the Radioport.
+- Next-station in a car from the last vanilla station reaches the first custom one, and from the
+  last custom one wraps to 88.9.
 
 ## Planned
 
 - Resume where a vanilla station would when switching away and back. Measured: the engine hands no
   offset on the custom-sound path, so the framework must compute one from its durations and the
   station clock and pass it to AudioXL as a per-row start (#1).
-- Vehicle next/previous cycling past the vanilla fourteen (`0x25fdf1b` is unpatched).
 - A `blips` array per station, the engine's own field for a spoken station ident between songs. A
   custom station currently has no way to name itself, and an ident placed in `tracks` is shown as a
   song title and takes a rotation slot.
 - Station idents and ads aside, the only vanilla DJ a custom station could reuse is Stanley, whose
   227 lines name no station. His announcements target a selector the engine resolves, and declaring
   `speaker: Stanley` does not reach it (#16).
-- Replace the two roster functions and the vehicle receiver rather than patching their bounds, which
-  lifts the 127-station ceiling.
+- Replace the two roster readers rather than patching their bounds, which lifts the 127-station
+  ceiling. The vehicle step already carries a 32-bit total.
 - Adopt RadioXL station definitions unchanged, starting with Outrun Waves 93.7.
 - Build a station in game from any installed song.

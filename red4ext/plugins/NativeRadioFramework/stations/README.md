@@ -27,7 +27,7 @@ soundbank, no redscript. Everything else is built from the manifest at load.
 
 | Field | What it is |
 | --- | --- |
-| `name` | The station's own CName. It must be unique across every installed station mod. |
+| `name` | The station's own CName: letters, digits and underscores only. It must be unique across every installed station mod. |
 | `displayName` | The label the game shows. Put the frequency at the front. |
 | `speaker` | Optional. The station's DJ. Defaults to `None`. |
 | `gain` | Optional. A level trim on every track, `0` to `1`. Defaults to `0.56`, which is -5 dB. |
@@ -46,6 +46,23 @@ crackles there at `1`. The default sits inside the vanilla range; raise it only 
 **The frequency lives at the front of `displayName`**, because the game has no field for it, and it
 is what the vehicle radio list sorts on. A station whose display name does not start with a number
 sorts to the top.
+
+## When the manifest is wrong
+
+**The file must be JSON.** No comments, no trailing commas, double quotes only, and a backslash in a
+path written twice (`"mymod\\gui\\icons.inkatlas"`), or once as a forward slash.
+
+**Every fault is logged with the file and the line, and the station is skipped whole.** A missing
+`name`, a `tracks` that is not an array, a `speaker` the game does not have, a `gain` written as a
+string, an `icon` with no `atlas` - each names its line in the RED4ext log:
+
+```text
+[NativeRadioFramework] YourMod/station.json:7: "speaker" must be one of None, Stanley, MaximumMike, Ash, Kurtz, PoliceDispatch: "Stanly"
+[NativeRadioFramework] YourMod/station.json: skipped
+```
+
+A key the framework does not know is logged the same way and ignored, so a typo in `displayName`
+shows up rather than quietly leaving the station nameless.
 
 ## What the manifest does NOT carry
 

@@ -8,13 +8,20 @@ Work top to bottom. The first three are the ones that break a station outright.
 
 ## 1. The binary roster patch
 
-`plugin/src/Main.cpp` extends two 14-slot tables and erases a modulo. Addresses resolve by RED4ext
-hash, never by hardcoded RVA, and **the plugin verifies every byte before writing any of them and
-abandons the whole patch on a single mismatch.** That is the design working, and it is silent from
-the player's side: every station is absent.
+`plugin/src/Main.cpp` extends two 14-slot tables, erases a modulo, and detours the vehicle
+receiver's next-station step to a stub of its own. Addresses resolve by RED4ext hash, never by
+hardcoded RVA, and **the plugin verifies every byte before writing any of them and abandons the
+whole patch on a single mismatch.** That is the design working, and it is silent from the player's
+side: every station is absent.
 
 **Check:** the redscript log for `roster patched to N stations`. If it reads
 `slot N is empty - too early to patch, abandoned` or does not appear, the patterns have moved.
+
+The detour has one more thing to move: the stub calls the two dial-order switches by the targets it
+reads from the block it replaces, so a patch that changes what those functions take or return breaks
+next-station in a car with every byte check still passing. **Check:** in a car, press next from the
+last vanilla station and again from the last custom one. The first must reach the first custom
+station and the second must wrap to the first vanilla one on the dial.
 
 ## 2. The routing bank's cited objects
 

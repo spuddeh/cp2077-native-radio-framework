@@ -76,10 +76,14 @@ binary before any script runs**:
 | --- | --- | --- |
 | the station roster, 14 `CName` slots | a station's identity | name-to-index and index-to-name readers, and the vehicle receiver's bound |
 | the station name table, 14 `CName` slots | a station's label as a localization key | two readers, each of which reduces the index modulo 14; the division is erased |
+| the vehicle receiver's next-station step | which station a car steps to | detoured to a stub, because the step runs the index through two dial-order switches on 0..13 around a modulo 14 |
 
 Addresses resolve through RED4ext's shipped hash database, never hardcoded. Every byte is verified
 first and the whole patch is abandoned on a single mismatch, because a half-patched radio system is
 worse than an unpatched one. Both bounds are 8-bit immediates, so 127 stations is the ceiling.
+
+A station manifest is read by a strict JSON parser and checked field by field. Every fault is logged
+with the file and the line, and a manifest with one is skipped whole rather than half-loaded.
 
 The plugin exposes the manifest to redscript through registered natives (`NRF_Station*`). It does
 not touch audio, TweakDB or UI.
@@ -137,14 +141,16 @@ The SDK's exports are version-qualified (`RED4ext::v1::PluginInfo`, `RED4EXT_V1_
 
 - The DLL and the scripts ship together, always. A `.reds` that declares natives fails script
   validation without its plugin, and that stops every redscript mod on the machine.
-- Vehicle next/previous cycling still wraps at fourteen. Direct selection works.
 - Three `@replaceMethod` on the cycling functions, so RadioExt and RadioXL cannot coexist with it.
 
 ## Repository layout
 
 ```text
-plugin/src/Main.cpp          manifests, the binary patch, the natives
+plugin/src/Main.cpp          the binary patch, the natives
+plugin/src/Json.hpp          a strict JSON reader, every fault by line and column
+plugin/src/Manifest.hpp      the manifest checks, every fault by file and line
 plugin/src/Duration.hpp      a track's length from its file headers
+plugin/tests/                the manifest reader's tests, run by ctest
 r6/scripts/NativeRadioFramework/
   NativeRadioFramework.reds  the three resource patches
   Audio.reds                 the AudioXL bridge

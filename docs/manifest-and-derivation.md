@@ -21,7 +21,7 @@ computes a value the game already knows, and nothing in a manifest can disagree 
 
 | Field | What it is |
 | --- | --- |
-| `name` | the station's `CName`. Unique across every installed station mod; first found wins, the log names the loser |
+| `name` | the station's `CName`, letters, digits and underscores only, because it is also an event-name prefix and a TweakDB record id. Unique across every installed station mod; first found wins, the log names the loser |
 | `displayName` | plain text. **The frequency at the front**, because the game has no field for it and the vehicle radio list sorts on it |
 | `speaker` | optional DJ: `Stanley`, `MaximumMike`, `Ash`, `Kurtz`, `PoliceDispatch`. Default `None`, which plays |
 | `gain` | optional level trim on the samples, 0 to 1, clamped. Default 0.56 (-5 dB), which lands the custom sound's two Broadcast Sends inside the vanilla per-station range; see `audio-path.md`. Applied through AudioXL's `SetGain` once the row exists, because `RegisterSoundEx`'s gain never reaches the samples |
@@ -32,6 +32,26 @@ computes a value the game already knows, and nothing in a manifest can disagree 
 Manifests live at `red4ext/plugins/NativeRadioFramework/stations/<Mod>/station.json`, one folder
 per mod so nothing is shared. Mod managers discard empty directories, so `stations/` ships a
 README to survive packaging.
+
+## How the manifest is read
+
+The manifest is the one file a station author writes by hand, so it is the one input that will be
+malformed. `plugin/src/Json.hpp` is a strict reader of RFC 8259 JSON plus a leading byte-order mark:
+no comments, no trailing commas, no single quotes, and every fault is reported as the line and
+column of the first one with a sentence saying what was expected. `plugin/src/Manifest.hpp` then
+checks the tree field by field and logs every fault as `<Mod>/station.json:<line>: <what>`.
+
+**A manifest with a fault is skipped whole.** A station loaded with one field missing looks like a
+bug somewhere else, and the log line is the whole of what the author needs.
+
+| Refused | Logged and ignored |
+| --- | --- |
+| `name` missing, not a string, or holding a character outside `[A-Za-z0-9_]` | a key the framework does not know, at top level or in a track |
+| `tracks` missing, not an array, or empty; a track that is not an object or has no `file` | `gain` outside 0 to 1, clamped |
+| `speaker` not one of the six the game has | `atlas` with no `icon` |
+| `gain` not a number; `icon` with no `atlas` | |
+
+`plugin/tests/ManifestTests.cpp` holds one case per row and runs under `ctest`.
 
 ## Everything derived
 

@@ -3,6 +3,24 @@
 ## [0.2.0] - 2026-09-08
 
 ### Added
+- `plugin/src/Json.hpp` and `plugin/src/Manifest.hpp`: the manifest is read by a strict JSON parser
+  (RFC 8259 plus a byte-order mark; no comments, trailing commas or single quotes) and checked field
+  by field. Every fault is logged as `<Mod>/station.json:<line>: <what>`, a syntax fault with its
+  column too, and a manifest with one is skipped whole. Refused: `name` missing or outside
+  `[A-Za-z0-9_]`, `tracks` missing, empty or not an array, a track with no `file`, a `speaker` the
+  game does not have, `gain` not a number, `icon` without `atlas`. Logged and ignored: an unknown
+  key, `gain` outside 0..1, `atlas` without `icon`. Replaces the substring scanner, which read a
+  title containing `"file"` as the file and stopped an array at a `]` inside a title.
+  `plugin/tests/ManifestTests.cpp` covers one case per rule, run by `ctest`. (#8)
+- The vehicle receiver's next-station step is detoured. The block at `+0x68..+0x92` of the
+  set-station function maps the current index through a dial-order switch on 0..13, adds one modulo
+  14, and maps back through the inverse switch; both switches misanswer a custom index and the
+  remainder is used, so neither erasing nor retuning the division works. The 42 bytes become a `jmp`
+  to a 55-byte stub, allocated within rip-relative reach and made executable before any game byte
+  is written, that calls the game's own switches for the fourteen, uses the slot index as the dial
+  position past them, and takes the total as a 32-bit immediate. Eight more bytes verified first;
+  the stub's call targets are read from the verified block. The dial order the switches encode is
+  88.9 to 107.5, so a custom station follows the last vanilla one in slot order. (#7)
 - `tools/audioxl-feed-probe.patch`: the AudioXL measurement build behind #1, #3 and #15. Logs how the
   engine pulls from `AudioFeed::Execute`, the slot position at voice start and every retire.
 - The engine's station NAME table is extended alongside the roster, so a custom station's label is

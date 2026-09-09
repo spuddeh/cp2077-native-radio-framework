@@ -87,7 +87,7 @@ runs of `nop` around it.
 each reader, and `index % 14 == index` for every vanilla index, so erasing the division changes
 nothing for the fourteen and stops the wrap for everything past them.
 
-## The vehicle receiver's bound
+## The vehicle receiver's bound, and its next-station step
 
 `[M]` `0x25fdea8` (hash `4148435735`), the vehicle receiver's set-station:
 
@@ -95,13 +95,73 @@ nothing for the fourteen and stops the wrap for everything past them.
 +0x5E  83 FF 0E            cmp  edi, 0x0e          ; the requested index against 14  <- imm8
 +0x62                      jb   accept
                            mov  edi, [rbx + 0xc]   ; reject: keep the current station
-...
-+0x85  imul eax, eax, 0x0e ; the next/previous wrap, a second division by 14
 ```
 
 Rejection is silent: `SetRadioReceiverStation(14)` left the receiver on its old station with no
 error. Raising the immediate at `+0x60` makes direct selection work - the car changes station and
 plays. `SetRadioReceiverStation` takes the `ERadioStationList` value, not the internal id.
+
+`[M]` **The same function's third argument selects the next-station step**, `+0x68` to `+0x92`:
+
+```
++0x68  8B 4B 0C            mov  ecx, [rbx + 0xc]   ; the current ERadioStationList value
++0x6B  E8 <rel32>          call 0x1c554a0          ; enum -> dial position, a switch on 0..13
++0x70  8D 48 01            lea  ecx, [rax + 1]
++0x73  B8 25 49 92 24      mov  eax, 0x24924925    \
+       ...                                          > (position + 1) % 14
++0x85  6B C0 0E            imul eax, eax, 0x0e     /
++0x88  2B C8               sub  ecx, eax
++0x8A  E8 <rel32>          call 0x1c553a0          ; dial position -> internal id, a switch on 0..13
++0x8F  8D 78 F8            lea  edi, [rax - 8]     ; undo the id bias
++0x92  89 7B 0C            mov  [rbx + 0xc], edi   ; the new station
+```
+
+**A car steps through the dial in frequency order, not enum order.** The two switches are inverse
+permutations of the fourteen, and the order they encode is 88.9 to 107.5:
+
+| dial position | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `ERadioStationList` | 4 | 0 | 11 | 10 | 1 | 9 | 8 | 6 | 13 | 2 | 3 | 7 | 5 | 12 |
+
+The first switch returns 0 for any value past 13 and the second returns 12 for any position past
+13, so a custom station got a wrong answer at both ends before the modulo was reached. The
+remainder is used, not discarded, so the division cannot be erased the way the name readers' is,
+and its `imul` operand cannot be retuned because the magic constant is 14's own.
+
+**The block is detoured whole.** Its 42 bytes become a `jmp` to a 55-byte stub allocated within
+rip-relative reach of the site, made executable before any game byte is written:
+
+```
+mov  ecx, [rbx+0xc]
+cmp  ecx, 14
+jae  custom_in
+call 0x1c554a0            ; the game's own switch for the fourteen
+jmp  have_position
+custom_in:
+mov  eax, ecx             ; a custom station's dial position is its slot
+have_position:
+inc  eax
+xor  edx, edx
+mov  ecx, total           ; a 32-bit immediate, so this bound is not one of the 8-bit ones
+div  ecx
+mov  ecx, edx
+cmp  ecx, 14
+jae  custom_out
+call 0x1c553a0            ; the game's own inverse for the fourteen
+lea  edi, [rax-8]
+jmp  +0x92
+custom_out:
+mov  edi, ecx
+jmp  +0x92
+```
+
+Register use matches the block it replaces (`ecx`, `eax`, `edx` scratch, `edi` the result, `rbx`
+the receiver), both switches are leaf functions the original block already called from this stack,
+and the only entry into the replaced bytes is the `jne` at `+0x5C`, which lands on the `jmp`. The
+two call targets are read from the verified block's own `rel32` rather than resolved by hash.
+
+**Custom stations sit after the vanilla dial, in slot order** - the same rule the world devices'
+script-side cycling uses.
 
 ## Exactly three sites divide by fourteen
 
@@ -111,17 +171,16 @@ plays. `SetRadioReceiverStation` takes the `ERadioStationList` value, not the in
 | --- | --- | --- |
 | `0x1c55423` | name-table reader one | erased |
 | `0x1cb337d` | name-table reader two, the Radioport's | erased |
-| `0x25fdf1b` | the vehicle receiver's next/previous wrap | **not patched** |
+| `0x25fdf1b` | the vehicle receiver's next-station wrap | **detoured**, with the block around it |
 
-The third cannot be handled the same way: it is the tail of a division whose result is used, not a
-reduction that can be deleted. Changing its `imul` operand computes the wrong remainder. The fix is
-to replace or detour the function. Until then next/previous in a car wraps at fourteen while direct
-selection reaches every station.
+The third is the tail of a division whose remainder is used, not a reduction that can be deleted,
+and the two switches either side of it are wrong for a custom index on their own. It goes with the
+whole block, above.
 
 ## The patch
 
-Seven sites across two tables, verified byte for byte first, all abandoned together on a single
-mismatch. Two fresh arrays are allocated within rip-relative reach of their readers (the second
+Eight sites across two tables and one detour, verified byte for byte first, all abandoned together
+on a single mismatch. Two fresh arrays are allocated within rip-relative reach of their readers (the second
 name-table reader addresses from the image base, so its table must be within 2 GB of that), the
 fourteen vanilla entries are copied, and the custom stations appended.
 
@@ -134,12 +193,13 @@ fourteen vanilla entries are copied, and the custom stations appended.
 | vehicle receiver `cmp edi` | 14 to the new total |
 | name reader one | division erased, `cmp` to total - 1, `lea rdx` to the new table |
 | name reader two | division erased around the `inc`, `cmp` to total - 1, `disp32` to the new table |
+| vehicle receiver `+0x68..+0x92` | `jmp` to the next-station stub, which carries the total as an imm32 |
 
 `[M]` Every hash resolved to the RVA the disassembly predicted, and every radio still works with the
 roster at fifteen.
 
-**Both bounds are 8-bit immediates, so 127 stations is the ceiling.** Lifting it means replacing the
-readers rather than patching them, which is also what fixes the vehicle wrap.
+**Both roster bounds are 8-bit immediates, so 127 stations is the ceiling.** Lifting it means
+replacing the readers rather than patching them. The vehicle step's bound is no longer one of them.
 
 ## Two things this table is not
 

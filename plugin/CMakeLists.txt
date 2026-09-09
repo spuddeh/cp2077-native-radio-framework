@@ -17,3 +17,9 @@ target_compile_definitions(NativeRadioFramework PRIVATE
 set_target_properties(NativeRadioFramework PROPERTIES
     OUTPUT_NAME "NativeRadioFramework"
     SUFFIX ".dll")
+
+# The manifest reader has no game dependency, so it is tested as a plain executable:
+#   ctest --test-dir plugin\build -C Release --output-on-failure
+enable_testing()
+add_executable(NrfManifestTests tests/ManifestTests.cpp)
+add_test(NAME manifest COMMAND NrfManifestTests)
