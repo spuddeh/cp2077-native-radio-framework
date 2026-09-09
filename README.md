@@ -61,6 +61,9 @@ boot-time window a station must be registered in, why every label is a key, what
 is and what AudioXL's renderer does with it - is written up in [docs/](docs/README.md), each claim
 marked measured or inferred.
 
+Several of those measurements are numbers a game patch can move, and none of them fails loudly.
+[MAINTAINING.md](MAINTAINING.md) is the list of what to re-derive and how to tell it has gone wrong.
+
 Three layers. The split matters, because each one extends a different engine system.
 
 ### The plugin - `plugin/src/`

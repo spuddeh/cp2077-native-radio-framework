@@ -20,14 +20,37 @@
 ### Fixed
 - World-device crackle: `mod_sfx_radio`'s stereo Broadcast Send is trimmed +2.9 dB where every
   vanilla station sits between -4 and +0.9 dB, so a master on 0 dBFS wrapped in the next 16-bit
-  stage at world devices. Every row is now trimmed to 0.56 through `AudioXLNative.SetGain` after
-  registration (`RegisterSoundEx`'s gain argument never reaches the samples), with a bounded retry
-  for a row AudioXL queued. New optional manifest key `gain` (0..1) and native `NRF_StationGain`.
-  Measured: gain 0.25 in the samples took 8,128 half-scale jumps in 160 s to 0. (#3)
-- Each track played twice on world devices: `Duration.hpp` counted the raw Xing frame count while
-  dr_mp3 trims the LAME gapless delay and padding, so the voice ended 27 to 47 ms inside its own
-  slot and the engine re-posted the same track. The reader now subtracts the trim with dr_mp3's
-  arithmetic. (#15)
+  stage at world devices. First trimmed to 0.56 in the samples through `AudioXLNative.SetGain`,
+  which corrects one receiver at a time: the stereo path needs -4.95 dB and the mono path -3.0.
+  The level now comes off the samples entirely - see the routing bank below. New optional manifest
+  key `gain` (0..1) and native `NRF_StationGain`. (#3)
+- A station's level is a send trim, carried by `red4ext/plugins/NativeRadioFramework/nrf_routing.bnk`
+  and the `nrf_radio` custom-sound type it defines: a byte clone of `mod_sfx_radio`'s Event, Play
+  action and CAkSound, citing the bank's **own copies** of Radio Vexelstrom's two Broadcast Sends
+  (-2.0 dB stereo, -5.0 dB mono) rather than `radio.bnk`'s objects, which a patch could move out
+  from under it. Built by `tools/make_routing_bank.py`; every id is FNV-derived from an `nrf_`
+  string. `kDefaultGain` is 1.0, and the 0.56 applies only on the `mod_sfx_radio` fallback, where it
+  multiplies a station's own gain rather than replacing it. Measured: 0 wrap artefacts in 550 s
+  against 6,250 in 160 s, true peak -1.4 dBFS, a custom station inside the vanilla loudness spread.
+  Confirmed in game: station switching stops the previous track, a vehicle takes over from the
+  Radioport, a world device attenuates with distance, a wanted star ducks and combat stops the audio,
+  the Music slider still moves it, WAV tracks play, and the bank survives loading a second save. (#17)
+- The custom-sound TYPE gets its own row in the audio event table. AudioXL stores a row's type as the
+  CName hash of the type string and the engine resolves that name through `eventsmetadata.json`, so
+  a type absent from it plays nothing and reports nothing: the bank loaded, all 84 tracks registered,
+  both stations built, every log line read as success, and every station was silent. (#17)
+- Each track played twice on world devices: not the LAME gapless trim, which made the declared
+  duration *exact* and so put every track on a coin flip. The engine re-posts a slot's track when the
+  voice ends while that slot is still current, and the event row holds a 32-bit float whose step is
+  15 microseconds at three minutes. Measured on two tracks four microseconds either side of their own
+  length: the one rounded up played twice, the one rounded down played once. The row is now written
+  at `duration - 0.5 s`, as vanilla does by seconds (`mus_radio_12_afterlife` declares 166 for 169.7).
+  Verified over three boundaries at ratios 1.000 and 0.998. (#15)
+- The station clock observer (`Clock.reds`) reads a station's position from
+  `GetRadioStationCurrentTrackName`, which returns the track's **localization key** rather than its
+  event name, resolved through `GetLocalizedTextByKey`. Restarts on every `Session/Ready` with a
+  generation retiring the old chain, because a session's delay callbacks do not outlive it and the
+  main menu is a session of its own. Instrument only; not for release. (#1)
 - The station was silent on every receiver when its registration waited for AudioXL to report
   durations: the engine builds its station set while `cooked_metadata` loads, and a station added
   afterwards is never constructed. Event rows, membership, the station entry and the text are now all

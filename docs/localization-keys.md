@@ -39,9 +39,9 @@ case-insensitively, the literals at `0x2af2fc4`) is UPPERCASED (`0x58e2e8`, an A
 and a key outside those namespaces is hashed as written.** The string-side lookup (`GetLocalizedText`,
 `inkText.SetText`, `SetLocalizedTextString`) uppercases what it is asked for, so a key outside the
 three namespaces never matches, while `GetLocalizedTextByKey(CName)` goes by the CName hash and does
-not care. That is the whole reason a title (looked up by hash) resolved while a station name (looked
-up by string) echoed its key, and why an ArchiveXL key beginning `Gameplay-` resolved from the console
-when `NRF-Station-...` did not.
+not care. So a title, looked up by hash, resolves where a station name looked up by string echoes
+its key, and an ArchiveXL key beginning `Gameplay-` resolves from the console where `NRF-Station-...`
+does not.
 
 Because the walk runs after `LoadTexts` returns, rows added by an after-hook (ArchiveXL, Codeware) and
 rows inserted while the resource loads are all indexed. The namespace is the only gate.

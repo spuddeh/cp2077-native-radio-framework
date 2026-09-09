@@ -11,21 +11,29 @@
 - Station name and song titles are real localization entries, resolved wherever a vanilla one is.
 - The station appears on the vehicle radio wheel, sorted by frequency, with its own name and icon.
 - An optional DJ per station (`speaker`), defaulting to none.
-- An optional level trim per station (`gain`, default 0.56), applied in the samples through AudioXL.
-  The default keeps a 0 dBFS master under the rail on the game's custom-radio send at world devices.
+- A station's level is a send trim, the way every vanilla station's is: the framework loads its own
+  bank, defining the `nrf_radio` custom-sound type carrying copies of a vanilla station's two
+  Broadcast Sends. No game file is replaced, and the game's own `mod_sfx_radio` type remains the
+  fallback if the bank does not load.
+- An optional level trim per station (`gain`, 0..1), applied in the samples through AudioXL on top of
+  the send trim.
 
-## Verified in game (2026-09-08)
+## Verified in game
 
-- Audio on all three receivers, two stations installed side by side.
+- Audio on all three receivers, two stations installed side by side, MP3 and WAV tracks.
 - Station name and icon on the Radioport, the vehicle selector, the dashboard and world devices.
-- World-device loudness at vanilla level (`distance` 30).
+- No crackle at a world device: 0 wrap artefacts in 550 s of capture, true peak -1.4 dBFS, a custom
+  station inside the vanilla loudness spread.
+- Each track plays once, over three slot boundaries.
+- The radio system owns the sound: switching station stops the previous track, a vehicle takes the
+  station over from the Radioport, a world device attenuates with distance, a wanted star ducks the
+  audio and combat stops it, and the Music slider moves it.
+- The routing bank survives loading a second save without restarting.
 
-## Awaiting in-game verification (deployed to Testing 2026-09-08)
+## Awaiting in-game verification
 
-- No crackle at world devices with the shipped AudioXL and the default `gain` (verified with a probe
-  build at 0.25; the shipped path through `SetGain` is the same code).
-- Each track plays once at a world device (one boundary verified).
-- Song titles outside the Radioport. The DJ.
+- The Radioport level against a vanilla station, by capture rather than by ear.
+- Song titles outside the Radioport.
 
 ## Planned
 
@@ -33,6 +41,12 @@
   offset on the custom-sound path, so the framework must compute one from its durations and the
   station clock and pass it to AudioXL as a per-row start (#1).
 - Vehicle next/previous cycling past the vanilla fourteen (`0x25fdf1b` is unpatched).
+- A `blips` array per station, the engine's own field for a spoken station ident between songs. A
+  custom station currently has no way to name itself, and an ident placed in `tracks` is shown as a
+  song title and takes a rotation slot.
+- Station idents and ads aside, the only vanilla DJ a custom station could reuse is Stanley, whose
+  227 lines name no station. His announcements target a selector the engine resolves, and declaring
+  `speaker: Stanley` does not reach it (#16).
 - Replace the two roster functions and the vehicle receiver rather than patching their bounds, which
   lifts the 127-station ceiling.
 - Adopt RadioXL station definitions unchanged, starting with Outrun Waves 93.7.

@@ -63,9 +63,9 @@ point at `From = 0.0` on its RTPC for `1631578750`. `fxID 0x000529A3` is the ste
 <https://github.com/spuddeh/cp2077-hardest-to-be-growl-fm>: **a segment does not inherit that routing
 from a parent playlist in another bank.** It plays dry, at the source file's own level, about 15 dB
 hot, holding level with distance until the emitter's range cuts it at 45 to 50 m. Turning the device
-off still stops it, so the station is scheduling it correctly and only the audio is off the chain -
-which is why every script-side check passes. The node has to carry the station's two send effects,
-its bus and its -96 dB Volume itself.
+off still stops it, so the station is scheduling it correctly and only the audio is off the chain,
+and every script-side check passes. The node has to carry the station's two send effects, its bus
+and its -96 dB Volume itself.
 
 The **CPR Voice Broadcast Send** is CDPR's own plugin and the mechanism behind "tuned to a
 broadcast channel". Every station has its **own pair** of send sharesets, and so does `mod_sfx_radio`.
@@ -103,11 +103,24 @@ The **Time Stretch** is the other structural difference and it is not the crackl
 Help says 100 % is no stretch, and the artefact has no grain period. `[I]` It exists so a custom
 sound slows with the world when a bus-level pitch shift cannot reach an Audio Input source.
 
-**Two ways to meet vanilla.** A per-row gain applied in the samples (AudioXL has `SetGain`;
-nothing calls it at registration) with a default near 0.45, which lands the stereo send at Growl FM's
-trim and leaves the mono send 3.9 dB under it. Or two curve points changed in `mod.bnk`, shipped as
-an archive, which is exact on both receivers and corrects every REDmod custom station too, at the
-price of being a vanilla-file replacement.
+**A sample gain cannot meet vanilla on both receivers, so the framework does not use one.** The
+stereo path needs -4.95 dB and the mono path -3.0; one figure applied to the audio lands devices
+mid-dial and leaves the Radioport at the bottom of the vanilla range. Editing two curve points in
+`mod.bnk` is exact on both, at the price of replacing a vanilla file and moving every REDmod custom
+station with it.
+
+`[M]` **The framework takes a third route: its own custom-sound type, in its own bank.** A type is
+whatever a loaded bank defines, and `nrf_routing.bnk` clones `mod_sfx_radio`'s Event, Play action and
+CAkSound, citing its own copies of a vanilla station's two Broadcast Sends instead of that object's.
+The level then comes from the same mechanism every vanilla station uses, on both receivers, and no
+game file is replaced. Measured after the change: **0 wrap artefacts in 550 s** where the same
+passage gave 6,250 in 160 s, true peak -1.4 dBFS, and a custom station inside the vanilla spread
+rather than above it.
+
+The sends are **copied rather than cited**, because a cited id that a patch or another mod moves does
+not error - the effect is absent, the sound leaves the broadcast chain, and it plays dry about
+15 dB hot at every distance while every script-side check still passes. The cost is that a retuned
+vanilla dial no longer moves this one: re-derive the trims after a game patch and rebuild.
 
 ### A receiver decides what it hears; the source only broadcasts
 
@@ -163,7 +176,7 @@ From its source, all `[M]`:
 | Right song after tuning back, from 0:00 | the engine picked the track from its clock; the renderer starts at 0, and the engine hands no offset | `[M]` both sides ([#1](https://github.com/spuddeh/cp2077-native-radio-framework/issues/1)) |
 | Each track plays twice on a world device | declared duration longer than the decoded length by the LAME gapless trim; the engine re-posts the slot | `[M]` cause; fix awaiting a run ([#15](https://github.com/spuddeh/cp2077-native-radio-framework/issues/15)) |
 | World devices quieter; car and Radioport fine | `818835100`'s attenuation, tuned for a broadcast SFX, not music. `RegisterSoundEx`'s `distance` is the untested knob | `[I]` ([#2](https://github.com/spuddeh/cp2077-native-radio-framework/issues/2)) |
-| Static and crackle, at devices only | `mod_sfx_radio`'s stereo send is trimmed +2.9 dB, 3 to 7 dB above every vanilla station; a source clamped at 0 dBFS wraps in the next 16-bit stage | `[M]` ([#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3)) |
+| Static and crackle, at devices only | `mod_sfx_radio`'s stereo send is trimmed +2.9 dB, 3 to 7 dB above every vanilla station; a source clamped at 0 dBFS wraps in the next 16-bit stage | `[M]` fixed by the framework's own type ([#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3), [#17](https://github.com/spuddeh/cp2077-native-radio-framework/issues/17)) |
 | Hundreds of MB of RAM | decode at registration | `[M]` ([#4](https://github.com/spuddeh/cp2077-native-radio-framework/issues/4)) |
 
 ## The engine never hands a start offset on this path
@@ -211,3 +224,13 @@ event with no row there cannot be posted by name and fails silently. The framewo
 per track as that resource loads: `redId` the event name, `wwiseId` from AudioXL (FNV-1 32-bit of the
 lowercased name), `minDuration` and `maxDuration` the track's length. A registry row alone plays from
 a receiver, but the station schedules against the event row, so both exist.
+
+`[M]` **The custom-sound TYPE needs a row of its own, on the same rule.** AudioXL stores a row's type
+as the CName hash of the type string, and the engine resolves that name through this table to reach
+the Wwise event. A type absent from it plays nothing and reports nothing: the bank loads, every track
+registers, every station is built, every log line reads as success, and there is silence. AudioXL
+registers its own six `axl_*` types here too.
+
+`[M]` **A bank load returning 1 does not mean the bank is live.** AudioXL returns 1 both for a load
+and for a bank queued because the engine's audio system is not up yet, which is the usual case at
+boot. Only a later failure is reported, so 1 at registration time is a promise rather than a fact.
