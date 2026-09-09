@@ -57,4 +57,5 @@
 - Replace the two roster readers rather than patching their bounds, which lifts the 127-station
   ceiling. The vehicle step already carries a 32-bit total.
 - Adopt RadioXL station definitions unchanged, starting with Outrun Waves 93.7.
-- Build a station in game from any installed song.
+- Build a playlist station in game from any installed song, saved as a manifest and read at the next launch (#19).
+- Parity with every RadioExt feature, and better where it can be (#20).
