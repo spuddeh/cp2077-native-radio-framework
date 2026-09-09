@@ -28,6 +28,11 @@ public class NRFSlot {
   public let seen: Bool;
 }
 
+// The engine names no track as `NoneTrack` rather than as an empty name, so both are "not playing".
+public func NRFClockPlaying(track: CName) -> Bool {
+  return IsNameValid(track) && !Equals(track, n"NoneTrack");
+}
+
 public class NRFClockTick extends DelayCallback {
   public let clock: wref<NRFStationClock>;
 
@@ -73,9 +78,11 @@ public class NRFStationClock extends IScriptable {
     this.Tick();
   }
 
-  // The engine's answer for a station that has not started playing is an invalid name, so a slot
-  // takes its first track without calling it a boundary. Only a change from one valid name to
-  // another is a boundary, and only then is an offset knowable.
+  // **The engine's "not playing" answer is the CName `NoneTrack`, which is a valid name.** Testing
+  // validity alone reads that sentinel as a track, so a station that never starts looks like one
+  // holding a single track forever and no boundary is ever seen. A slot takes its first real track
+  // without calling it a boundary; only a change from one real track to another is one, and only
+  // then is an offset knowable.
   public func Tick() -> Void {
     let now: Float = this.Now();
     this.m_ticks += 1;
@@ -84,8 +91,8 @@ public class NRFStationClock extends IScriptable {
     while i < ArraySize(this.m_slots) {
       let slot = this.m_slots[i];
       let current: CName = GetRadioStationCurrentTrackName(slot.station);
-      if IsNameValid(current) && !Equals(current, slot.track) {
-        let had: Bool = IsNameValid(slot.track);
+      if NRFClockPlaying(current) && !Equals(current, slot.track) {
+        let had: Bool = NRFClockPlaying(slot.track);
         slot.track = current;
         slot.at = now;
         if had {
