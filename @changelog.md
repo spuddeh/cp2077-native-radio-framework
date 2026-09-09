@@ -37,6 +37,12 @@
   107.5. The enum value equalled the position only while custom stations were appended, and the
   first station inserted inside the vanilla dial made every station above it play the content of
   the one below. (#14)
+- The fourteen vanilla `RadioStation` records are rewritten to their new dial positions at load.
+  Their `index` flats are fixed vanilla positions, so a custom station inserted below one left two
+  records on one index: the popup lit both and selecting either played the station now holding
+  that position. Measured with a station at 97.5: it and Body Heat both lit and both played it,
+  Tool FM at 104.9 and Morro Rock did the same, and every vanilla station above played the
+  station one position below. (#14)
 - `tools/audioxl-feed-probe.patch`: the AudioXL measurement build behind #1, #3 and #15. Logs how the
   engine pulls from `AudioFeed::Execute`, the slot position at voice start and every retire.
 - The engine's station NAME table is extended alongside the roster, so a custom station's label is

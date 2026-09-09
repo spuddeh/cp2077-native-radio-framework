@@ -88,7 +88,28 @@ public class NRFRecords extends ScriptableTweak {
       i += 1;
     }
     if count > 0 {
+      this.Retune();
       NRFLog(s"built \(count) station record(s)");
+    }
+  }
+
+  // The fourteen vanilla records carry their vanilla dial position as `index`, a fixed number. A
+  // custom station inserted below one of them moves that station's position, so the record must
+  // say the new one, or the popup finds two records on one index: both light up, and selecting
+  // either plays whichever station now holds that position. Vanilla order is untouched when no
+  // custom station sits inside the dial; the number written is then the number already there.
+  private func Retune() -> Void {
+    let names: array<String> = ["AggroIndie", "ElectroIndie", "HipHop", "AggroTechno", "Downtempo", "AttRock", "Pop",
+                                "Latino", "Metal", "MinimTech", "Jazz", "GrowlFM", "DarkStar", "Impulse"];
+    let station: Int32 = 0;
+    while station < 14 {
+      let recordName: String = "RadioStation." + names[station];
+      let position: Int32 = NRF_DialPosition(station);
+      if position >= 0 {
+        TweakDBManager.SetFlat(TDBID.Create(recordName + ".index"), ToVariant(position));
+        TweakDBManager.UpdateRecord(TDBID.Create(recordName));
+      }
+      station += 1;
     }
   }
 
