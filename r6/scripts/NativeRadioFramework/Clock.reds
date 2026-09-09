@@ -137,13 +137,21 @@ public class NRFStationClock extends IScriptable {
     this.Arm(generation);
   }
 
-  // The track a station's own key list places this key at, or -1 for a key that is none of them.
+  // The track this key names, or -1 for a key naming none of the station's tracks.
+  //
+  // **The CName the engine hands back carries a localization key's hash and no text, so it never
+  // equals a CName built from the key's own string.** Comparing the two directly matches nothing
+  // and reports a running station as idle. `GetLocalizedTextByKey` is what resolves a key of that
+  // shape - it is how the dashboard turns the same value into a song title - so the title is what
+  // identifies the track, against the titles the framework registered for it.
   private func TrackOf(station: Int32, key: CName) -> Int32 {
     if !IsNameValid(key) { return -1; }
+    let title: String = GetLocalizedTextByKey(key);
+    if StrLen(title) == 0 { return -1; }
     let tracks: Int32 = NRF_StationTrackCount(station);
     let t: Int32 = 0;
     while t < tracks {
-      if Equals(key, NRF_StationTrackKey(station, t)) { return t; }
+      if StrCmp(title, NRF_StationTrackTitle(station, t)) == 0 { return t; }
       t += 1;
     }
     return -1;
@@ -163,13 +171,15 @@ public class NRFStationClock extends IScriptable {
     while i < ArraySize(this.m_slots) {
       let slot = this.m_slots[i];
       let current: CName = GetRadioStationCurrentTrackName(slot.station);
-      line += s" \(slot.station)=track \(this.TrackOf(slot.stationIndex, current))";
+      // The resolved title as well as the index: a key that resolves to a title matching no track
+      // is a different fault from one that resolves to nothing, and the index alone hides which.
+      line += s" \(slot.station)=track \(this.TrackOf(slot.stationIndex, current)) \"\(GetLocalizedTextByKey(current))\"";
       i += 1;
     }
-    // Growl FM is the control. Its key belongs to no custom station, so it resolves to -1 either
-    // way and only its text is worth reading: a station with nothing playing names the sentinel.
+    // Growl FM is the control. Its key belongs to no custom station, so only the title it resolves
+    // to is worth reading, and a vanilla song title there proves the lookup itself works.
     let control: CName = GetRadioStationCurrentTrackName(n"radio_station_12_growl_fm");
-    line += s" | control growl_fm=\(control)";
+    line += s" | control growl_fm=\"\(GetLocalizedTextByKey(control))\"";
     NRFLog(line);
   }
 
