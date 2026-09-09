@@ -69,8 +69,11 @@ public class NRFDial {
 // --- the TweakDB records -------------------------------------------------------------------------
 // A station mod ships a manifest, its audio and at most an icon archive. The records the dial needs
 // are built here from that manifest, so a mod author never writes a yaml and never has to guess an
-// index: the index MUST equal the roster slot the plugin assigned, and that depends on how many
-// station mods are installed and in what order they were found.
+// index. **A record's `index` is the station's DIAL POSITION, a UI index, not its enum value**:
+// the popup hands `record.Index()` to `SendRadioEvent`, which converts it through
+// `GetRadioStationByUIIndex`. Vanilla's records carry 0 for 88.9 up to 13 for 107.5. A custom
+// station's position depends on which other station mods are installed, so it is read from the
+// plugin's dial at load. Writing the enum value here plays the station one position below.
 
 // **A record is created from a ScriptableTweak, never a ScriptableService.** OnApply is the point
 // TweakXL extends TweakDB; anything written before that is discarded when TweakDB loads, which
@@ -125,10 +128,11 @@ public class NRFRecords extends ScriptableTweak {
     TweakDBManager.SetFlat(TDBID.Create(recordName + ".displayName"),
                            ToVariant(NRF_StationDisplayName(slot)));
     TweakDBManager.SetFlat(TDBID.Create(recordName + ".icon"), ToVariant(iconId));
-    TweakDBManager.SetFlat(TDBID.Create(recordName + ".index"), ToVariant(14 + slot));
+    let position: Int32 = NRF_DialPosition(14 + slot);
+    TweakDBManager.SetFlat(TDBID.Create(recordName + ".index"), ToVariant(position));
     TweakDBManager.UpdateRecord(recordId);
 
-    NRFLog(s"\(recordName): record \(madeStation), icon \(madeIcon) (\(part) in \(atlas)), index \(14 + slot)");
+    NRFLog(s"\(recordName): record \(madeStation), icon \(madeIcon) (\(part) in \(atlas)), dial position \(position)");
   }
 }
 

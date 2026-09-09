@@ -66,7 +66,7 @@ bug somewhere else, and the log line is the whole of what the author needs.
 | station label key | `Gameplay-Devices-Radio-NRF-<name>` | the engine's name table holds a key, and a key resolves by string only under `Gameplay-`, `UI-` or `Common-`; see [localization](localization-keys.md) |
 | title key | `Gameplay-Devices-Radio_tracks-NRF-<name>-NN` | `audioRadioTrack` holds a key, in the same namespace as vanilla track keys |
 | both hashes of each key | FNV1a32 keeping the key text, FNV1a64 with it cleared | how `onscreens` rows are found; see [localization](localization-keys.md) |
-| `RadioStation` record | `RadioStation.NRF_<name>` with `displayName`, `icon`, `index` = slot | the index must equal the roster slot: the popup plays `record.Index()` |
+| `RadioStation` record | `RadioStation.NRF_<name>` with `displayName`, `icon`, `index` = dial position | `index` is a UI index, not the enum: the popup hands `record.Index()` to `SendRadioEvent`, which converts it through `GetRadioStationByUIIndex`. Vanilla carries 0 for 88.9 to 13 for 107.5 |
 | `UIIcon` record | `UIIcon.NRF_<name>` with `atlasPartName`, `atlasResourcePath` | the wheel and the device logo load atlas and part from it |
 
 `[M]` TweakDB records must be created from `ScriptableTweak.OnApply`, never from a

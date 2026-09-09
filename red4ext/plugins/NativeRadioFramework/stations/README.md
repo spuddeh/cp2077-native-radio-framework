@@ -74,9 +74,9 @@ A file whose length cannot be read is dropped, and the log names it.
 **No event names.** They are derived as `<name>_01`, `<name>_02` and so on, so a filename with a
 space or an accent in it never reaches an event name.
 
-**No Wwise ids, no `index`, no TweakDB records.** A station's index must equal the roster slot the
-framework assigned, which depends on how many station mods are installed and in what order they
-were found - so no mod can know its own in advance. The framework creates the records.
+**No Wwise ids, no `index`, no TweakDB records.** A station's record index is its position on the
+dial, which depends on which other station mods are installed and their frequencies - so no mod can
+know its own in advance. The framework creates the records.
 
 ## The icon
 

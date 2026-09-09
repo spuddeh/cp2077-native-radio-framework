@@ -31,6 +31,12 @@
   cycling replacements keep vanilla's Samizdat skip anchored to the station rather than position
   5, and the vehicle list inserts a custom station at its dial position plus one. One order on
   every receiver. (#14)
+- A `RadioStation` record's `index` is written as the station's dial position, not its enum
+  value. The popup hands `record.Index()` to `SendRadioEvent`, which converts it through
+  `GetRadioStationByUIIndex`, so the field is a UI index; vanilla carries 0 for 88.9 to 13 for
+  107.5. The enum value equalled the position only while custom stations were appended, and the
+  first station inserted inside the vanilla dial made every station above it play the content of
+  the one below. (#14)
 - `tools/audioxl-feed-probe.patch`: the AudioXL measurement build behind #1, #3 and #15. Logs how the
   engine pulls from `AudioFeed::Execute`, the slot position at voice start and every retire.
 - The engine's station NAME table is extended alongside the roster, so a custom station's label is
