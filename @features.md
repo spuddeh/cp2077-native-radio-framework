@@ -34,13 +34,14 @@
   station over from the Radioport, a world device attenuates with distance, a wanted star ducks the
   audio and combat stops it, and the Music slider moves it.
 - The routing bank survives loading a second save without restarting.
+- One dial on every receiver: a custom station at 104.9 sits between 103.5 and 106.9 in a car, on a
+  world radio and in the vehicle list, and cycling wraps at the end of the roster. World radios skip
+  Samizdat as vanilla does; cars and the pocket radio reach it.
 
 ## Awaiting in-game verification
 
 - The Radioport level against a vanilla station, by capture rather than by ear.
 - Song titles outside the Radioport.
-- Next-station in a car and on a world device passes through a custom station at its frequency,
-  and the vehicle list shows it there.
 
 ## Planned
 
