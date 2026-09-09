@@ -109,13 +109,34 @@ trim and leaves the mono send 3.9 dB under it. Or two curve points changed in `m
 an archive, which is exact on both receivers and corrects every REDmod custom station too, at the
 price of being a vanilla-file replacement.
 
+### A receiver decides what it hears; the source only broadcasts
+
+`[M]` **A world device does not stop the station's voice when it is switched off or retuned. It stops
+listening.** `radio.swift`, `speaker.swift`, `jukebox.swift` and `lift.swift` all do the same two
+things: set the device's own `radio_station` switch, and start or break-loop its `radio_idle` effect.
+Nothing there reaches the voice. That is why a vanilla station is mid-song when a receiver tunes back
+in, and why a car taking the station over from the Radioport is arbitration between receivers rather
+than a handover of one sound.
+
+So what a bank object decides is not whether the radio system controls it. It is whether the sound is
+on the broadcast chain at all.
+
 ### The `axl_*` types are not an alternative
 
-`[M]` AudioXL's own routing bank defines `axl_voice_2d`, `axl_music_2d`, `axl_radio_2d`, `axl_sfx_2d`
-and `axl_master_2d`. Each is a 2D sound on a mixer bus, tied to no game object and to no
-`radio_station` switch. On `axl_radio_2d` the Radioport and a car played at once, a car could not
-take over, and a world device sounded like it worked because the audio was audible everywhere. A
+`[M]` AudioXL's own routing bank defines `axl_voice_2d`, `axl_music_2d`, `axl_radio_2d`, `axl_sfx_2d`,
+`axl_master_2d` and `axl_radioport_2d`. On `axl_radio_2d` the Radioport and a car play at once, a car
+cannot take over, and a world device sounds like it works because the audio is audible everywhere. A
 station on those is a parallel player, not a station.
+
+`[M]` **The cause is the missing chain, not positioning.** Five of the six carry
+`uBitsPositioning 3` and `uBits3d 8`, the same bits `mod_sfx_radio` carries; only `axl_radioport_2d`
+is 2D. Against `mod_sfx_radio`, `axl_radio_2d` (`4061179639`) differs in exactly two ways that
+matter: it carries **no effects at all**, so neither Broadcast Send, and **no `Volume` property**, so
+its dry output is not muted. It is heard directly on its own bus, which no receiver arbitrates.
+
+The consequence for anything built on this path: **a custom sound keeps the receivers' behaviour for
+as long as it keeps the two sends and the -96 dB dry mute.** Changing which send objects it cites
+changes its level and nothing else.
 
 ## What AudioXL's renderer does, and does not do
 

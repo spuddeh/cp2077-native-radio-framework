@@ -101,7 +101,7 @@ public class NRFStationClock extends IScriptable {
   // **A watch that logs only what it expects cannot tell silence from a stopped clock.** This says
   // what the native actually answered, for each watched station and for a vanilla control, so a run
   // that produces no boundary distinguishes "the engine names no track for a custom station" from
-  // "the tick chain died". Dense at first, then once a minute, and bounded.
+  // "the tick chain died". Every tick for the first five, then once a minute, and bounded.
   private func Report(now: Float) -> Void {
     if this.m_reports >= 25 { return; }
     if this.m_ticks > 5 && this.m_ticks % 60 != 0 { return; }
