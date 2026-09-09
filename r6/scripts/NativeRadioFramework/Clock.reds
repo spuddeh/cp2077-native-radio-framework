@@ -15,22 +15,26 @@
 // already partway through a track when the watch began - and the answer is -1 rather than 0, so a
 // caller can tell "not yet known" from "just started".
 //
+// **What that function returns is the track's LOCALIZATION KEY, not its event name.** The CName it
+// hands back carries the key's hash and no text, so printing it yields nothing and reading it as a
+// name is what makes a running schedule look like an idle one. A station's own keys are minted by
+// the plugin and read back through `NRF_StationTrackKey`, so the key is matched against those to
+// name the slot. A key matching none of them is the engine's "nothing playing" answer, whatever
+// text that sentinel carries.
+//
 // Resolution is the poll interval, one second. A resume is placed to within that.
 
 module NativeRadioFramework
 
 // One station's place in its own schedule. `at` is sim time, which stops when the game does, and
-// the radio's voices stop with it.
+// the radio's voices stop with it. `index` is the track's place in the station's own list.
 public class NRFSlot {
   public let station: CName;
+  public let stationIndex: Int32;
   public let track: CName;
+  public let index: Int32;
   public let at: Float;
   public let seen: Bool;
-}
-
-// The engine names no track as `NoneTrack` rather than as an empty name, so both are "not playing".
-public func NRFClockPlaying(track: CName) -> Bool {
-  return IsNameValid(track) && !Equals(track, n"NoneTrack");
 }
 
 public class NRFClockTick extends DelayCallback {
@@ -70,6 +74,7 @@ public class NRFStationClock extends IScriptable {
         if IsNameValid(name) {
           let slot = new NRFSlot();
           slot.station = name;
+          slot.stationIndex = i;
           ArrayPush(this.m_slots, slot);
         }
         i += 1;
@@ -81,6 +86,7 @@ public class NRFStationClock extends IScriptable {
     let i: Int32 = 0;
     while i < ArraySize(this.m_slots) {
       this.m_slots[i].track = n"";
+      this.m_slots[i].index = -1;
       this.m_slots[i].at = 0.0;
       this.m_slots[i].seen = false;
       i += 1;
@@ -93,27 +99,30 @@ public class NRFStationClock extends IScriptable {
     this.Tick(this.m_generation);
   }
 
-  // **The engine's "not playing" answer is the CName `NoneTrack`, which is a valid name.** Testing
-  // validity alone reads that sentinel as a track, so a station that never starts looks like one
-  // holding a single track forever and no boundary is ever seen. A slot takes its first real track
-  // without calling it a boundary; only a change from one real track to another is one, and only
-  // then is an offset knowable.
+  // A slot takes its first track without calling it a boundary, because the station was already
+  // partway through it. Only a change from one track to another is a boundary, and only then is an
+  // offset knowable.
   public func Tick(generation: Int32) -> Void {
     if generation != this.m_generation { return; }
     let now: Float = this.Now();
     this.m_ticks += 1;
     this.Report(now);
+
     let i: Int32 = 0;
     while i < ArraySize(this.m_slots) {
       let slot = this.m_slots[i];
       let current: CName = GetRadioStationCurrentTrackName(slot.station);
-      if NRFClockPlaying(current) && !Equals(current, slot.track) {
-        let had: Bool = NRFClockPlaying(slot.track);
+      let index: Int32 = this.TrackOf(slot.stationIndex, current);
+      if index >= 0 && index != slot.index {
+        let had: Bool = slot.index >= 0;
         slot.track = current;
+        slot.index = index;
         slot.at = now;
         if had {
           slot.seen = true;
-          NRFLog(s"\(slot.station) moved to \(current) at \(now)");
+          NRFLog(s"\(slot.station) moved to track \(index) at \(now)");
+        } else {
+          NRFLog(s"\(slot.station) is on track \(index), start time unknown");
         }
       }
       i += 1;
@@ -121,10 +130,22 @@ public class NRFStationClock extends IScriptable {
     this.Arm(generation);
   }
 
+  // The track a station's own key list places this key at, or -1 for a key that is none of them.
+  private func TrackOf(station: Int32, key: CName) -> Int32 {
+    if !IsNameValid(key) { return -1; }
+    let tracks: Int32 = NRF_StationTrackCount(station);
+    let t: Int32 = 0;
+    while t < tracks {
+      if Equals(key, NRF_StationTrackKey(station, t)) { return t; }
+      t += 1;
+    }
+    return -1;
+  }
+
   // **A watch that logs only what it expects cannot tell silence from a stopped clock.** This says
-  // what the native actually answered, for each watched station and for a vanilla control, so a run
-  // that produces no boundary distinguishes "the engine names no track for a custom station" from
-  // "the tick chain died". Every tick for the first five, then once a minute, and bounded.
+  // which track each station resolves to, so a run that produces no boundary distinguishes "the
+  // engine names no track" from "the tick chain died". Every tick for the first five, then once a
+  // minute, and bounded.
   private func Report(now: Float) -> Void {
     if this.m_reports >= 25 { return; }
     if this.m_ticks > 5 && this.m_ticks % 60 != 0 { return; }
@@ -133,22 +154,31 @@ public class NRFStationClock extends IScriptable {
     let line: String = s"tick \(this.m_ticks) at \(now):";
     let i: Int32 = 0;
     while i < ArraySize(this.m_slots) {
-      let station: CName = this.m_slots[i].station;
-      line += s" \(station)=\(GetRadioStationCurrentTrackName(station))";
+      let slot = this.m_slots[i];
+      let current: CName = GetRadioStationCurrentTrackName(slot.station);
+      line += s" \(slot.station)=track \(this.TrackOf(slot.stationIndex, current))";
       i += 1;
     }
-    // Growl FM is the control. An answer here with none beside it means the native works and a
-    // custom station is absent from whatever it reads.
+    // Growl FM is the control. Its key belongs to no custom station, so it resolves to -1 either
+    // way and only its text is worth reading: a station with nothing playing names the sentinel.
     let control: CName = GetRadioStationCurrentTrackName(n"radio_station_12_growl_fm");
     line += s" | control growl_fm=\(control)";
     NRFLog(line);
   }
 
-  // The track the engine says a station is playing, valid only once it has started one.
+  // The key the engine says a station is playing.
   public func CurrentTrack(station: CName) -> CName {
     let slot = this.Find(station);
     if !IsDefined(slot) { return n""; }
     return slot.track;
+  }
+
+  // The track the engine says a station is playing, as its place in the station's own list, or -1
+  // before the station has started one.
+  public func CurrentIndex(station: CName) -> Int32 {
+    let slot = this.Find(station);
+    if !IsDefined(slot) { return -1; }
+    return slot.index;
   }
 
   // Seconds into the current track, or -1 when no boundary has been observed for this station yet.
