@@ -25,14 +25,31 @@ import AudioXL.*
 public class NRFAudio {
 
   @if(ModuleExists("AudioXL"))
-  public final static func Register(event: CName, file: String) -> Bool {
+  public final static func Register(event: CName, file: String, type: CName) -> Bool {
     // pitch default, distance 30: the row's attenuation reach at a world device. 0 is the engine's
     // default for the mod_sfx_radio object, which is tuned for a broadcast effect and plays a
     // station audibly quieter at a device than a vanilla one. `stream` is read for WAV only.
     // The gain argument here is stored in the engine's registry entry and never reaches the
     // samples; the level is set through SetGain below once the row exists.
-    return AudioXLNative.RegisterSoundEx(event, n"mod_sfx_radio", file, 1.0, 0.0, 30.0,
+    return AudioXLNative.RegisterSoundEx(event, type, file, 1.0, 0.0, 30.0,
                                          false, 0.0, 0.0, 0.0, 0.0, 0.0, true);
+  }
+
+  // **A custom sound is played by posting its TYPE's event, and a type is whatever a loaded bank
+  // defines.** This framework's own bank defines `nrf_radio`, a clone of the game's `mod_sfx_radio`
+  // that cites a vanilla station's pair of Broadcast Send objects instead of that type's own, which
+  // are trimmed above every station on the dial. Loading it is what makes the type postable.
+  //
+  // 1 is AudioXL's success and 69 is a bank already loaded; both mean the type resolves.
+  @if(ModuleExists("AudioXL"))
+  public final static func LoadBank(path: String) -> Bool {
+    let result: Int32 = AudioXLNative.LoadBank(path);
+    return result == 1 || result == 69;
+  }
+
+  @if(!ModuleExists("AudioXL"))
+  public final static func LoadBank(path: String) -> Bool {
+    return false;
   }
 
   // The level trim on a row's samples. False when the row does not exist yet: AudioXL queues a
@@ -48,7 +65,7 @@ public class NRFAudio {
   }
 
   @if(!ModuleExists("AudioXL"))
-  public final static func Register(event: CName, file: String) -> Bool {
+  public final static func Register(event: CName, file: String, type: CName) -> Bool {
     return false;
   }
 

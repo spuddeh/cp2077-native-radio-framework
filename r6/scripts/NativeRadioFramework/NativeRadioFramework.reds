@@ -159,10 +159,24 @@ public class NativeRadioFramework extends ScriptableService {
   // AudioXL owns sound. It takes the file and supplies the Wwise id; the track's length is the
   // plugin's, read from the file's headers, because it is needed before AudioXL can decode anything.
 
+  // The framework's own bank, and the type it defines. **The type decides where a station's sound
+  // is sent**: `nrf_radio` carries a vanilla station's send trims, while the game's `mod_sfx_radio`
+  // is trimmed 3 to 7 dB above every station on the dial. The fallback is not a degraded mode - it
+  // is what every station sounded like before the bank existed - so a bank that fails to load costs
+  // level accuracy and nothing else.
+  private func AudioType() -> CName {
+    if NRFAudio.LoadBank("red4ext/plugins/NativeRadioFramework/nrf_routing.bnk") {
+      return n"nrf_radio";
+    }
+    NRFLog("the routing bank did not load - falling back to the game's mod_sfx_radio type");
+    return n"mod_sfx_radio";
+  }
+
   private func RegisterAudio() -> Void {
     if this.m_audioDone { return; }
     this.m_audioDone = true;
 
+    let type: CName = this.AudioType();
     let registered: Int32 = 0;
     let station: Int32 = 0;
     let count: Int32 = NRF_StationCount();
@@ -174,7 +188,7 @@ public class NativeRadioFramework extends ScriptableService {
         let event: CName = NRF_StationTrack(station, t);
         let file: String = NRF_StationTrackFile(station, t);
         if IsNameValid(event) && StrLen(file) > 0 && !NRFAudio.Has(event) {
-          if NRFAudio.Register(event, file) {
+          if NRFAudio.Register(event, file, type) {
             registered += 1;
             if !NRFAudio.SetGain(event, gain) {
               this.m_gainPending = true;
