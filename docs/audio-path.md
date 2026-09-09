@@ -179,12 +179,30 @@ three unmeasured steps.
 
 `[M]` Same probe: the next voice starts about 30 ms after the previous one retires at its last frame,
 never on a clock boundary. Which track it posts is whatever slot the station clock is in at that
-instant. **So the declared duration must equal the decoded length.** Declare longer and the voice ends
-inside its own slot, the slot is still current, and the engine posts the same track again from 0:00.
-The Tool FM MP3s carry a LAME gapless tag (delay 576, padding 717 to 1681 frames); dr_mp3 trims it,
-and a duration counted from the raw frame count is 27 to 47 ms too long. `Duration.hpp` subtracts the
-trim with dr_mp3's own arithmetic. Declare shorter and the voice outlives its slot; what the engine
-does then is unmeasured.
+instant. Declare longer and the voice ends inside its own slot, the slot is still current, and the
+engine posts the same track again from 0:00.
+
+`[M]` **So the declared duration must sit BELOW the decoded length, and an exact one does not.** A
+duration at or above the real length loses that race about half the time, because the event row
+holds a 32-bit float whose step is 15 microseconds at three minutes and the rounding decides the
+sign. Two Tool FM tracks four microseconds either side of their own length, from the file lengths
+and one boundary-to-boundary observation:
+
+| track | decoded | declared | difference | heard |
+| --- | --- | --- | --- | --- |
+| Lost Keys | 226.324917 | 226.324921 | +4 us | plays twice, slot held 453.19 s |
+| Afterlife | 169.721333 | 169.721329 | -4 us | plays once |
+
+The repeat is a full second play-through, not a fragment, so a slot reads as exactly twice its
+track. It is invisible as a slot boundary, because a re-posted slot reports the same track.
+
+`[M]` **Vanilla does not run that race**: `mus_radio_12_afterlife` declares
+`minDuration = maxDuration = 166` for 169.72 s of audio, and every vanilla radio row carries seconds
+of margin. A station that under-declares has its slot end first, and the engine waits for the voice.
+
+So subtracting the LAME gapless tag (delay 576, padding 717 to 1681 frames, which dr_mp3 trims and
+which leaves a raw frame count 27 to 47 ms long) is necessary but not sufficient: accuracy is the
+wrong target, and the row is written at `duration - 0.1 s` to stay clear of the float step.
 
 ## Events, and why the row alone is not enough
 

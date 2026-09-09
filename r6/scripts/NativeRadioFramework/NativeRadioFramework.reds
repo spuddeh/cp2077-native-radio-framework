@@ -19,6 +19,21 @@ public func NRFLog(msg: String) -> Void {
 @if(!ModuleExists("RedLogger"))
 public func NRFLog(msg: String) -> Void {}
 
+// **A declared duration must sit BELOW the decoded length, and an exact one does not.** The engine
+// posts a slot's track again when the voice ends while that slot is still current, so a duration at
+// or above the real length loses that race about half the time: the row holds a 32-bit float whose
+// step is 15 microseconds at three minutes, and the rounding decides the sign. Measured on two
+// tracks four microseconds either side of their own length - the one rounded up played twice, the
+// one rounded down played once.
+//
+// A station that under-declares does not run the race at all: the slot ends first and the engine
+// waits for the voice. Vanilla is built that way throughout, `mus_radio_12_afterlife` declaring
+// 166 s for 169.7 s of audio. A tenth of a second is thousands of times the float step and stays
+// far below anything audible.
+public func NRFScheduleMargin() -> Float {
+  return 0.1;
+}
+
 // Supplied by the plugin, which reads the station manifests. The list is declared once, in the
 // manifest, and read from here - never restated in script.
 public native func NRF_StationCount() -> Int32;
@@ -317,8 +332,8 @@ public class NativeRadioFramework extends ScriptableService {
             row.wwiseId = NRFAudio.WwiseId(name);
             row.isLooping = false;
             row.maxAttenuation = 0.0;
-            row.minDuration = duration;
-            row.maxDuration = duration;
+            row.minDuration = duration - NRFScheduleMargin();
+            row.maxDuration = duration - NRFScheduleMargin();
             ArrayPush(events.events, row);
             added += 1;
             total += duration;
