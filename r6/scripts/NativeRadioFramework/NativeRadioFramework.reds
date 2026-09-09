@@ -349,6 +349,27 @@ public class NativeRadioFramework extends ScriptableService {
     if !IsDefined(events) { return; }
     this.m_eventsDone = true;
 
+    // **The custom-sound TYPE is posted by name, so it needs a row here exactly as a track does.**
+    // AudioXL stores a row's type as the CName hash of the type string, and the engine resolves
+    // that name through this table to reach the Wwise event. A type absent from it plays nothing
+    // and reports nothing - the registration succeeds, the bank loads, and every station is silent.
+    // AudioXL registers its own six `axl_*` types here for the same reason.
+    let typeRow: audioAudioEventMetadataArrayElement;
+    typeRow.redId = n"nrf_radio";
+    typeRow.wwiseId = NRFAudio.WwiseId(n"nrf_radio");
+    typeRow.isLooping = false;
+    typeRow.maxAttenuation = 0.0;
+    typeRow.minDuration = 0.0;
+    typeRow.maxDuration = 0.0;
+    if typeRow.wwiseId == 0u {
+      NRFLog("the nrf_radio type has no Wwise id - the routing bank cannot be posted, so every station falls to the game's type");
+    } else {
+      if !this.HasEvent(events, n"nrf_radio") {
+        ArrayPush(events.events, typeRow);
+        NRFLog(s"registered the nrf_radio type in the audio event table, wwiseId \(typeRow.wwiseId)");
+      }
+    }
+
     let added: Int32 = 0;
     let total: Float = 0.0;
     let station: Int32 = 0;
