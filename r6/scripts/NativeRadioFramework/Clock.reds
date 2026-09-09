@@ -115,12 +115,19 @@ public class NRFStationClock extends IScriptable {
       let index: Int32 = this.TrackOf(slot.stationIndex, current);
       if index >= 0 && index != slot.index {
         let had: Bool = slot.index >= 0;
+        let leaving: Int32 = slot.index;
+        let held: Float = now - slot.at;
         slot.track = current;
         slot.index = index;
         slot.at = now;
         if had {
           slot.seen = true;
-          NRFLog(s"\(slot.station) moved to track \(index) at \(now)");
+          // **A slot the engine re-posts reports the same key, so a repeat is invisible as a
+          // boundary and is only visible in how long the slot was held.** A track held for about
+          // twice its declared length played twice; the declared length is what the station
+          // schedules against, so the two numbers side by side say which is wrong.
+          let declared: Float = NRF_StationTrackDuration(slot.stationIndex, leaving);
+          NRFLog(s"\(slot.station) moved to track \(index) at \(now) - track \(leaving) held \(held) s, declared \(declared) s");
         } else {
           NRFLog(s"\(slot.station) is on track \(index), start time unknown");
         }
