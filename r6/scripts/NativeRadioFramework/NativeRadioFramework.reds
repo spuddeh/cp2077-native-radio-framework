@@ -27,11 +27,15 @@ public func NRFLog(msg: String) -> Void {}
 // one rounded down played once.
 //
 // A station that under-declares does not run the race at all: the slot ends first and the engine
-// waits for the voice. Vanilla is built that way throughout, `mus_radio_12_afterlife` declaring
-// 166 s for 169.7 s of audio. A tenth of a second is thousands of times the float step and stays
-// far below anything audible.
+// waits for the voice, so the margin costs no audio. Vanilla is built that way, and by far more -
+// `mus_radio_12_afterlife` declares 166 s for 169.7 s.
+//
+// **What caps the margin is that the station clock free-runs.** A slot shorter than its track
+// advances the clock a little further than one slot per post, and the excess accumulates until a
+// slot is passed over and its track goes unplayed. Half a second is 33,000 times the float step and
+// reaches that point about once in 450 tracks.
 public func NRFScheduleMargin() -> Float {
-  return 0.1;
+  return 0.5;
 }
 
 // Supplied by the plugin, which reads the station manifests. The list is declared once, in the
