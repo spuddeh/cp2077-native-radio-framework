@@ -76,7 +76,7 @@ binary before any script runs**:
 | --- | --- | --- |
 | the station roster, 14 `CName` slots | a station's identity | name-to-index and index-to-name readers, and the vehicle receiver's bound |
 | the station name table, 14 `CName` slots | a station's label as a localization key | two readers, each of which reduces the index modulo 14; the division is erased |
-| the vehicle receiver's next-station step | which station a car steps to | detoured to a stub, because the step runs the index through two dial-order switches on 0..13 around a modulo 14 |
+| the vehicle receiver's next-station step | which station a car steps to | detoured to a stub reading the plugin's own dial tables, because the step runs the index through two dial-order switches on 0..13 around a modulo 14 |
 
 Addresses resolve through RED4ext's shipped hash database, never hardcoded. Every byte is verified
 first and the whole patch is abandoned on a single mismatch, because a half-patched radio system is

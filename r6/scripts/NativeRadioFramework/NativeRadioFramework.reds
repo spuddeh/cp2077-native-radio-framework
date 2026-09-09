@@ -53,6 +53,8 @@ public func NRFFallbackTrim() -> Float {
 // Supplied by the plugin, which reads the station manifests. The list is declared once, in the
 // manifest, and read from here - never restated in script.
 public native func NRF_StationCount() -> Int32;
+public native func NRF_DialPosition(index: Int32) -> Int32;
+public native func NRF_DialStation(index: Int32) -> Int32;
 public native func NRF_StationName(index: Int32) -> CName;
 public native func NRF_StationKey(index: Int32) -> CName;
 public native func NRF_StationDisplayName(index: Int32) -> String;

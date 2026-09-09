@@ -43,9 +43,10 @@ station names one; a station without one plays.
 a custom station to world devices hotter than its own stations, so a track mastered to 0 dBFS
 crackles there at `1`. The default sits inside the vanilla range; raise it only for quiet material.
 
-**The frequency lives at the front of `displayName`**, because the game has no field for it, and it
-is what the vehicle radio list sorts on. A station whose display name does not start with a number
-sorts to the top.
+**The frequency lives at the front of `displayName`**, because the game has no field for it. The
+number decides where the station sits on the dial: in the vehicle list, and in the order every
+receiver steps through when you press next. A station whose display name does not start with a
+number goes after every station that has one.
 
 ## When the manifest is wrong
 

@@ -100,6 +100,18 @@ which a short slot advances slightly faster than one slot per post.
 **Check:** if tracks start doubling, or a track is skipped every few dozen plays, `NRFScheduleMargin`
 is the number to move.
 
+## 7. The vanilla frequencies
+
+The dial order is by frequency, and the game stores no frequency: it is the number at the front of
+each display name. The plugin carries the fourteen vanilla ones in `kVanillaFrequency`
+(`plugin/src/Main.cpp`) to decide where a custom station is inserted. The fourteen's own order is
+asked of the game's switch at patch time, so it cannot drift; only a custom station's place can.
+
+**Check:** the redscript log line `dial order ...` lists `ERadioStationList` values in dial order.
+The fourteen must read `4 0 11 10 1 9 8 6 13 2 3 7 5 12` with the custom stations (14 and up)
+between the right neighbours. If CDPR retunes a station, its number in `kVanillaFrequency` moves
+with it; the station names are `docs/compiled-station-roster.md`'s frequency table.
+
 ## After any of the above
 
 Run the whole in-game set rather than only the thing that changed. In order, stopping at the first

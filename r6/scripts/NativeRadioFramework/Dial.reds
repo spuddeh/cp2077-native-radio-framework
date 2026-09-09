@@ -167,28 +167,37 @@ public final static func GetChannelName(radioStationType: ERadioStationList) -> 
 }
 
 // --- dial order ---------------------------------------------------------------------------------
-// Custom stations sit after the vanilla fourteen, so enum value and UI index are the same number.
+// The "UI index" is the DIAL POSITION: vanilla's maps put the fourteen in ascending frequency, and
+// the plugin's table does the same for every station, with each custom one inserted at its
+// frequency. The plugin owns the order so the vehicle's native step and these agree; the vanilla
+// maps are the fallback for an unpatched roster.
 
 @wrapMethod(RadioStationDataProvider)
 public final static func GetRadioStationUIIndex(index: Int32) -> Int32 {
-  return NRFDial.Slot(index) >= 0 ? index : wrappedMethod(index);
+  let position: Int32 = NRF_DialPosition(index);
+  return position >= 0 ? position : wrappedMethod(index);
 }
 
 @wrapMethod(RadioStationDataProvider)
 public final static func GetRadioStationByUIIndex(index: Int32) -> ERadioStationList {
-  return NRFDial.Slot(index) >= 0 ? IntEnum<ERadioStationList>(index) : wrappedMethod(index);
+  let station: Int32 = NRF_DialStation(index);
+  return station >= 0 ? IntEnum<ERadioStationList>(station) : wrappedMethod(index);
 }
 
 // --- cycling -------------------------------------------------------------------------------------
 // Replaced rather than wrapped: the vanilla bodies carry `% 14`, which no wrapper can reach.
+//
+// Vanilla skips Samizdat Radio in both directions, by its position number: the station before it
+// steps over it forwards and the station after it steps over it backwards. That is a design
+// choice and it is kept, anchored to the station rather than the number, since a custom station
+// below 95.2 moves the number.
 
 @replaceMethod(RadioStationDataProvider)
 public final static func GetNextStationTo(currentIndex: Int32) -> ERadioStationList {
   let total: Int32 = NRFDial.Total();
   let current: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(currentIndex);
-  // Minimal Techno is skipped going forwards in the vanilla body, and that is a design choice
-  // rather than an accident, so it is kept.
-  current = current == 4 ? 5 : current;
+  let skip: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(EnumInt(ERadioStationList.MINIMAL_TECHNO));
+  current = current == skip - 1 ? skip : current;
   return RadioStationDataProvider.GetRadioStationByUIIndex((current + 1) % total);
 }
 
@@ -196,7 +205,8 @@ public final static func GetNextStationTo(currentIndex: Int32) -> ERadioStationL
 public final static func GetPreviousStationTo(currentIndex: Int32) -> ERadioStationList {
   let total: Int32 = NRFDial.Total();
   let current: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(currentIndex);
-  current = current == 6 ? 5 : current;
+  let skip: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(EnumInt(ERadioStationList.MINIMAL_TECHNO));
+  current = current == skip + 1 ? skip : current;
   return RadioStationDataProvider.GetRadioStationByUIIndex((current - 1 + total) % total);
 }
 
@@ -211,54 +221,33 @@ public final static func GetNextStationPocketRadio(currentIndex: Int32) -> ERadi
 }
 
 // --- the vehicle radio list ----------------------------------------------------------------------
-// The popup shows this array in order, and vanilla pushes its fifteen in ascending frequency:
-// 88.9, 89.3, 89.7, 91.9 and so on, after No Station. So a custom station is inserted at its
-// frequency rather than appended, or it sits at the bottom of a dial that is otherwise a real dial.
-//
-// The frequency is the front of the display name - the game has no field for it.
-
-public class NRFFreq {
-  public final static func Of(record: wref<RadioStation_Record>) -> Float {
-    if !IsDefined(record) { return -1.0; }
-    let head: String;
-    let tail: String;
-    if !StrSplitFirst(GetLocalizedText(record.DisplayName()), " ", head, tail) {
-      return -1.0;
-    }
-    return StringToFloat(head, -1.0);
-  }
-}
+// The popup shows this array in order, and vanilla pushes No Station and then its fourteen in
+// dial order: 88.9, 89.3, 89.7, 91.9 and so on. So the list is the dial with one row in front, and
+// a custom station goes in at its dial position plus one. Walking the dial in position order keeps
+// every index valid as rows are inserted.
 
 @wrapMethod(VehiclesManagerDataHelper)
 public final static func GetRadioStations(player: ref<GameObject>) -> array<ref<IScriptable>> {
   let list: array<ref<IScriptable>> = wrappedMethod(player);
 
-  let count: Int32 = NRF_StationCount();
-  let i: Int32 = 0;
-  while i < count {
-    let record = TweakDBInterface.GetRadioStationRecord(TDBID.Create(NRFDial.RecordName(i)));
-    if IsDefined(record) {
-      let data = new RadioListItemData();
-      data.m_record = record;
-
-      let ours: Float = NRFFreq.Of(record);
-      let at: Int32 = -1;
-      let j: Int32 = 0;
-      while j < ArraySize(list) {
-        let row = list[j] as RadioListItemData;
-        // No Station has no frequency and parses as -1, so it always stays first.
-        if at < 0 && IsDefined(row) && NRFFreq.Of(row.m_record) > ours {
-          at = j;
+  let total: Int32 = NRFDial.Total();
+  let position: Int32 = 0;
+  while position < total {
+    let slot: Int32 = NRFDial.Slot(NRF_DialStation(position));
+    if slot >= 0 {
+      let record = TweakDBInterface.GetRadioStationRecord(TDBID.Create(NRFDial.RecordName(slot)));
+      if IsDefined(record) {
+        let data = new RadioListItemData();
+        data.m_record = record;
+        let at: Int32 = position + 1;
+        if at < ArraySize(list) {
+          ArrayInsert(list, at, data);
+        } else {
+          ArrayPush(list, data);
         }
-        j += 1;
-      }
-      if at < 0 {
-        ArrayPush(list, data);
-      } else {
-        ArrayInsert(list, at, data);
       }
     }
-    i += 1;
+    position += 1;
   }
   return list;
 }

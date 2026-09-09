@@ -65,8 +65,9 @@ constexpr size_t kVehicleCmpImm    = 0x60;
 // current index through a dial-order table (a switch on 0..13), adds one, reduces modulo 14 with a
 // magic-number division, maps back through the inverse table (another switch on 0..13) and drops
 // the id bias. A custom index gets a wrong answer from each table before the modulo is reached, so
-// the operand cannot be widened and the block is DETOURED whole: a stub calls the game's own two
-// tables for the fourteen and uses the slot index as the dial position for everything past them.
+// the operand cannot be widened and the block is DETOURED whole: a stub reads two tables of this
+// plugin's own, holding every station in dial order, and the two switches are consulted once at
+// patch time for the order of the fourteen.
 constexpr size_t kVehicleStepFrom     = 0x68;  // 8B 4B 0C         mov ecx, [rbx+0xc]
 constexpr size_t kVehicleStepToDial   = 0x6B;  // E8 rel32         call index -> dial position
 constexpr size_t kVehicleStepInc      = 0x70;  // 8D 48 01         lea ecx, [rax+1]
@@ -139,6 +140,30 @@ constexpr int kMaxStations = 127;  // both bounds are 8-bit immediates
 using nrf::kDefaultGain;
 using nrf::Station;
 using nrf::Track;
+
+// --- the dial ----------------------------------------------------------------------------------
+// The order a receiver steps through stations is by FREQUENCY, the number at the front of a
+// station's display name, and the game has no field for it: the fourteen's order is compiled into
+// two switches for the vehicle and two script maps for everything else. The plugin builds one
+// table of every station in that order and hands it to both. The fourteen's order comes from the
+// game's own switch at patch time; their frequencies, which decide where a custom station is
+// inserted, are these, indexed by ERadioStationList.
+constexpr float kVanillaFrequency[kVanillaCount] = {
+    89.3f,   // AGGRO_INDUSTRIAL   Radio Vexelstrom
+    92.9f,   // ELECTRO_INDUSTRIAL Night FM
+    101.9f,  // HIP_HOP            The Dirge
+    103.5f,  // AGGRO_TECHNO       Radio PEBKAC
+    88.9f,   // DOWNTEMPO          Pacific Dreams
+    107.3f,  // ATTITUDE_ROCK      Morro Rock Radio
+    98.7f,   // POP                Body Heat Radio
+    106.9f,  // LATINO             30 Principales
+    96.1f,   // METAL              Ritual FM
+    95.2f,   // MINIMAL_TECHNO     Samizdat Radio
+    91.9f,   // JAZZ               Royal Blue Radio
+    89.7f,   // GROWL              Growl FM
+    107.5f,  // DARK_STAR          Dark Star
+    99.9f,   // IMPULSE_FM         Impulse
+};
 
 // Vanilla puts a LOCALIZATION KEY in the engine's name table and in every audioRadioTrack row, and
 // the UI resolves it. So the framework mints a key per station and registers the text against it,
@@ -357,6 +382,85 @@ void LoadManifests()
     }
 }
 
+std::vector<int32_t> g_dial;      // dial position -> ERadioStationList value
+std::vector<int32_t> g_position;  // ERadioStationList value -> dial position
+
+// The number at the front of a display name, or -1 when there is none. A station with no
+// frequency sits after every station that has one.
+float Frequency(const std::string& aDisplayName)
+{
+    const char* text = aDisplayName.c_str();
+    char* end = nullptr;
+    const double v = std::strtod(text, &end);
+    return (end && end != text && v >= 0.0) ? static_cast<float>(v) : -1.0f;
+}
+
+// Every station in dial order. The fourteen come first in the order the game's own switch gives
+// them; each custom station is then inserted before the first station whose frequency is above
+// its own, so a 93.7 lands between 92.9 and 95.2. Two customs on one frequency keep slot order.
+using DialSwitch = uint32_t (*)(uint32_t);
+
+void BuildDial(DialSwitch aIndexToDial)
+{
+    std::vector<int32_t> order(kVanillaCount, -1);
+    bool permutation = true;
+    for (int32_t i = 0; i < kVanillaCount && permutation; ++i)
+    {
+        const uint32_t p = aIndexToDial(static_cast<uint32_t>(i));
+        if (p >= static_cast<uint32_t>(kVanillaCount) || order[p] != -1)
+        {
+            permutation = false;
+        }
+        else
+        {
+            order[p] = i;
+        }
+    }
+    if (!permutation)
+    {
+        Log("the game's dial switch is not a permutation of 14 - the fourteen are ordered by the frequency table instead");
+        for (int32_t i = 0; i < kVanillaCount; ++i)
+        {
+            order[i] = i;
+        }
+        std::stable_sort(order.begin(), order.end(),
+                         [](int32_t a, int32_t b) { return kVanillaFrequency[a] < kVanillaFrequency[b]; });
+    }
+
+    auto frequencyOf = [](int32_t aStation)
+    {
+        return aStation < kVanillaCount ? kVanillaFrequency[aStation]
+                                        : Frequency(g_stations[aStation - kVanillaCount].displayName);
+    };
+
+    std::vector<int32_t> customs;
+    for (size_t i = 0; i < g_stations.size(); ++i)
+    {
+        customs.push_back(kVanillaCount + static_cast<int32_t>(i));
+    }
+    std::stable_sort(customs.begin(), customs.end(),
+                     [&](int32_t a, int32_t b) { return frequencyOf(a) < frequencyOf(b); });
+
+    for (const int32_t station : customs)
+    {
+        const float f = frequencyOf(station);
+        auto at = order.end();
+        if (f >= 0.0f)
+        {
+            at = std::find_if(order.begin(), order.end(),
+                              [&](int32_t other) { return frequencyOf(other) > f; });
+        }
+        order.insert(at, station);
+    }
+
+    g_dial = order;
+    g_position.assign(order.size(), -1);
+    for (size_t p = 0; p < order.size(); ++p)
+    {
+        g_position[order[p]] = static_cast<int32_t>(p);
+    }
+}
+
 // A rip-relative displacement is 32 bits signed, so the new roster has to land within 2 GB of the
 // instructions that reach it.
 void* AllocateNear(uintptr_t aAnchor, size_t aSize)
@@ -387,31 +491,25 @@ void* AllocateNear(uintptr_t aAnchor, size_t aSize)
 }
 
 // The stub the vehicle receiver's next-station step is detoured to. Register use matches the block
-// it replaces: ecx, eax and edx are scratch there, edi is the result, rbx holds the receiver, and
-// both game tables are leaf functions the original block already called from this same stack.
+// it replaces: ecx, eax and edx are scratch there, edi is the result and rbx holds the receiver.
+// The two tables follow the code in the same allocation, reached rip-relative.
 //
 //   mov  ecx, [rbx+0xc]         the current ERadioStationList value
-//   cmp  ecx, 14
-//   jae  custom_in
-//   call index_to_dial          eax = dial position, 0..13
-//   jmp  have_dial
-// custom_in:
-//   mov  eax, ecx               a custom station's dial position is its slot
-// have_dial:
+//   xor  eax, eax
+//   cmp  ecx, total             a 32-bit immediate: this bound is not one of the 8-bit ones
+//   jae  unknown                a value off the roster steps as vanilla did: from position 0
+//   lea  rax, [rip+position]
+//   mov  eax, [rax+rcx*4]       eax = dial position
+// unknown:
 //   inc  eax
 //   xor  edx, edx
-//   mov  ecx, total             a 32-bit immediate: this bound is not one of the 8-bit ones
+//   mov  ecx, total
 //   div  ecx                    edx = (position + 1) % total
-//   mov  ecx, edx
-//   cmp  ecx, 14
-//   jae  custom_out
-//   call dial_to_id             eax = internal id, 8..21
-//   lea  edi, [rax-8]
+//   lea  rax, [rip+dial]
+//   mov  edi, [rax+rdx*4]       edi = the station at that position
 //   jmp  resume
-// custom_out:
-//   mov  edi, ecx
-//   jmp  resume
-constexpr size_t kStepStubSize = 0x37;
+constexpr size_t kStepStubCode = 0x31;
+constexpr size_t kStepStubTables = 0x34;  // position[total] then dial[total], int32 each
 
 bool Rel32(uintptr_t aFrom, uintptr_t aTo, int32_t& aOut)
 {
@@ -424,44 +522,47 @@ bool Rel32(uintptr_t aFrom, uintptr_t aTo, int32_t& aOut)
     return true;
 }
 
-bool BuildStepStub(uint8_t* aStub, uintptr_t aIndexToDial, uintptr_t aDialToId, uintptr_t aResume,
-                   uint32_t aTotal)
+size_t StepStubSize(size_t aTotal)
+{
+    return kStepStubTables + 2 * aTotal * sizeof(int32_t);
+}
+
+bool BuildStepStub(uint8_t* aStub, uintptr_t aResume, uint32_t aTotal)
 {
     const auto base = reinterpret_cast<uintptr_t>(aStub);
-    int32_t toDial = 0, toId = 0, resumeA = 0, resumeB = 0;
-    if (!Rel32(base + 0x0D, aIndexToDial, toDial) || !Rel32(base + 0x28, aDialToId, toId) ||
-        !Rel32(base + 0x30, aResume, resumeA) || !Rel32(base + 0x37, aResume, resumeB))
+    const uintptr_t position = base + kStepStubTables;
+    const uintptr_t dial = position + aTotal * sizeof(int32_t);
+    int32_t toPosition = 0, toDial = 0, resume = 0;
+    if (!Rel32(base + 0x14, position, toPosition) || !Rel32(base + 0x29, dial, toDial) ||
+        !Rel32(base + 0x31, aResume, resume))
     {
         return false;
     }
 
-    const uint8_t vanilla = static_cast<uint8_t>(kVanillaCount);
-    uint8_t code[kStepStubSize] = {
-        0x8B, 0x4B, 0x0C,        // 00  mov ecx, [rbx+0xc]
-        0x83, 0xF9, vanilla,     // 03  cmp ecx, 14
-        0x73, 0x07,              // 06  jae 0F
-        0xE8, 0, 0, 0, 0,        // 08  call index_to_dial
-        0xEB, 0x02,              // 0D  jmp 11
-        0x8B, 0xC1,              // 0F  mov eax, ecx
-        0xFF, 0xC0,              // 11  inc eax
-        0x33, 0xD2,              // 13  xor edx, edx
-        0xB9, 0, 0, 0, 0,        // 15  mov ecx, total
-        0xF7, 0xF1,              // 1A  div ecx
-        0x8B, 0xCA,              // 1C  mov ecx, edx
-        0x83, 0xF9, vanilla,     // 1E  cmp ecx, 14
-        0x73, 0x0D,              // 21  jae 30
-        0xE8, 0, 0, 0, 0,        // 23  call dial_to_id
-        0x8D, 0x78, 0xF8,        // 28  lea edi, [rax-8]
-        0xE9, 0, 0, 0, 0,        // 2B  jmp resume
-        0x8B, 0xF9,              // 30  mov edi, ecx
-        0xE9, 0, 0, 0, 0,        // 32  jmp resume
+    uint8_t code[kStepStubCode] = {
+        0x8B, 0x4B, 0x0C,              // 00  mov ecx, [rbx+0xc]
+        0x33, 0xC0,                    // 03  xor eax, eax
+        0x81, 0xF9, 0, 0, 0, 0,        // 05  cmp ecx, total
+        0x73, 0x0A,                    // 0B  jae 17
+        0x48, 0x8D, 0x05, 0, 0, 0, 0,  // 0D  lea rax, [rip+position]
+        0x8B, 0x04, 0x88,              // 14  mov eax, [rax+rcx*4]
+        0xFF, 0xC0,                    // 17  inc eax
+        0x33, 0xD2,                    // 19  xor edx, edx
+        0xB9, 0, 0, 0, 0,              // 1B  mov ecx, total
+        0xF7, 0xF1,                    // 20  div ecx
+        0x48, 0x8D, 0x05, 0, 0, 0, 0,  // 22  lea rax, [rip+dial]
+        0x8B, 0x3C, 0x90,              // 29  mov edi, [rax+rdx*4]
+        0xE9, 0, 0, 0, 0,              // 2C  jmp resume
     };
-    std::memcpy(code + 0x09, &toDial, sizeof(toDial));
-    std::memcpy(code + 0x16, &aTotal, sizeof(aTotal));
-    std::memcpy(code + 0x24, &toId, sizeof(toId));
-    std::memcpy(code + 0x2C, &resumeA, sizeof(resumeA));
-    std::memcpy(code + 0x33, &resumeB, sizeof(resumeB));
+    std::memcpy(code + 0x07, &aTotal, sizeof(aTotal));
+    std::memcpy(code + 0x10, &toPosition, sizeof(toPosition));
+    std::memcpy(code + 0x1C, &aTotal, sizeof(aTotal));
+    std::memcpy(code + 0x25, &toDial, sizeof(toDial));
+    std::memcpy(code + 0x2D, &resume, sizeof(resume));
     std::memcpy(aStub, code, sizeof(code));
+    std::memset(aStub + kStepStubCode, 0xCC, kStepStubTables - kStepStubCode);
+    std::memcpy(reinterpret_cast<void*>(position), g_position.data(), aTotal * sizeof(int32_t));
+    std::memcpy(reinterpret_cast<void*>(dial), g_dial.data(), aTotal * sizeof(int32_t));
     return true;
 }
 
@@ -595,30 +696,32 @@ void PatchRoster()
         return;
     }
 
+    // The dial order. The fourteen's order is asked of the game's own switch, whose address is read
+    // from the block verified above rather than resolved by hash.
+    BuildDial(reinterpret_cast<DialSwitch>(Rel32Target(vehicleSet + kVehicleStepToDial)));
+
     // The next-station stub, built and made executable before any game byte is touched, so a
-    // failure here still leaves the game unpatched. Its two call targets are read from the block it
-    // replaces rather than resolved by hash: the block is verified above, so they are the game's.
-    void* freshStub = AllocateNear(reinterpret_cast<uintptr_t>(vehicleSet), kStepStubSize);
+    // failure here still leaves the game unpatched.
+    const size_t stubSize = StepStubSize(static_cast<size_t>(total));
+    void* freshStub = AllocateNear(reinterpret_cast<uintptr_t>(vehicleSet), stubSize);
     if (!freshStub)
     {
         Log("could not allocate the next-station stub within rip-relative reach");
         return;
     }
     auto* stub = static_cast<uint8_t*>(freshStub);
-    if (!BuildStepStub(stub, Rel32Target(vehicleSet + kVehicleStepToDial),
-                       Rel32Target(vehicleSet + kVehicleStepFromDial),
-                       reinterpret_cast<uintptr_t>(vehicleSet + kVehicleStepTo), static_cast<uint32_t>(total)))
+    if (!BuildStepStub(stub, reinterpret_cast<uintptr_t>(vehicleSet + kVehicleStepTo), static_cast<uint32_t>(total)))
     {
-        Log("the next-station stub cannot reach the game's dial tables - nothing patched");
+        Log("the next-station stub cannot reach its site - nothing patched");
         return;
     }
     DWORD oldProtect = 0;
-    if (!VirtualProtect(stub, kStepStubSize, PAGE_EXECUTE_READ, &oldProtect))
+    if (!VirtualProtect(stub, stubSize, PAGE_EXECUTE_READ, &oldProtect))
     {
         Log("could not make the next-station stub executable - nothing patched");
         return;
     }
-    FlushInstructionCache(GetCurrentProcess(), stub, kStepStubSize);
+    FlushInstructionCache(GetCurrentProcess(), stub, stubSize);
 
     int32_t dispStub = 0;
     if (!Rel32(reinterpret_cast<uintptr_t>(vehicleSet + kVehicleStepFrom + 5), reinterpret_cast<uintptr_t>(stub), dispStub))
@@ -709,9 +812,14 @@ void PatchRoster()
             std::to_string(kVanillaCount + i) + ", internal id " +
             std::to_string(kVanillaCount + i + 8) + "): " + g_stations[i].name);
     }
+    std::string dial;
+    for (const int32_t station : g_dial)
+    {
+        dial += (dial.empty() ? "" : " ") + std::to_string(station);
+    }
     Log("roster patched to " + std::to_string(total) + " stations at " +
         Hex(reinterpret_cast<uintptr_t>(table)) + ", vehicle next-station step detoured to " +
-        Hex(reinterpret_cast<uintptr_t>(stub)));
+        Hex(reinterpret_cast<uintptr_t>(stub)) + ", dial order " + dial);
 }
 
 // --- the script side of the manifest -----------------------------------------------------------
@@ -748,6 +856,32 @@ void NRF_StationCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32
     if (aOut)
     {
         *aOut = g_patched ? static_cast<int32_t>(g_stations.size()) : 0;
+    }
+}
+
+// The dial order, for the script-side receivers. -1 when the roster is not patched or the value
+// is off the dial, and the caller falls back to the vanilla maps.
+void NRF_DialPosition(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
+{
+    int32_t station = -1;
+    RED4ext::GetParameter(aFrame, &station);
+    ++aFrame->code;
+    if (aOut)
+    {
+        const bool known = g_patched && station >= 0 && static_cast<size_t>(station) < g_position.size();
+        *aOut = known ? g_position[station] : -1;
+    }
+}
+
+void NRF_DialStation(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
+{
+    int32_t position = -1;
+    RED4ext::GetParameter(aFrame, &position);
+    ++aFrame->code;
+    if (aOut)
+    {
+        const bool known = g_patched && position >= 0 && static_cast<size_t>(position) < g_dial.size();
+        *aOut = known ? g_dial[position] : -1;
     }
 }
 
@@ -1023,6 +1157,8 @@ void RegisterNatives()
     };
 
     reg("NRF_StationCount", &NRF_StationCount, "Int32", 0);
+    reg("NRF_DialPosition", &NRF_DialPosition, "Int32", 1);
+    reg("NRF_DialStation", &NRF_DialStation, "Int32", 1);
     reg("NRF_StationName", &NRF_StationName, "CName", 1);
     reg("NRF_StationKey", &NRF_StationKey, "CName", 1);
     reg("NRF_StationDisplayName", &NRF_StationDisplayName, "String", 1);

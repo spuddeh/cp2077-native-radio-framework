@@ -128,40 +128,39 @@ The first switch returns 0 for any value past 13 and the second returns 12 for a
 remainder is used, not discarded, so the division cannot be erased the way the name readers' is,
 and its `imul` operand cannot be retuned because the magic constant is 14's own.
 
-**The block is detoured whole.** Its 42 bytes become a `jmp` to a 55-byte stub allocated within
-rip-relative reach of the site, made executable before any game byte is written:
+**The block is detoured whole.** Its 42 bytes become a `jmp` to a 49-byte stub allocated within
+rip-relative reach of the site, followed in the same allocation by two tables of the plugin's own,
+`position[total]` and `dial[total]`, made executable before any game byte is written:
 
 ```
 mov  ecx, [rbx+0xc]
-cmp  ecx, 14
-jae  custom_in
-call 0x1c554a0            ; the game's own switch for the fourteen
-jmp  have_position
-custom_in:
-mov  eax, ecx             ; a custom station's dial position is its slot
-have_position:
+xor  eax, eax
+cmp  ecx, total           ; a 32-bit immediate, so this bound is not one of the 8-bit ones
+jae  unknown              ; a value off the roster steps from position 0, as vanilla did
+lea  rax, [rip+position]
+mov  eax, [rax+rcx*4]     ; the dial position
+unknown:
 inc  eax
 xor  edx, edx
-mov  ecx, total           ; a 32-bit immediate, so this bound is not one of the 8-bit ones
-div  ecx
-mov  ecx, edx
-cmp  ecx, 14
-jae  custom_out
-call 0x1c553a0            ; the game's own inverse for the fourteen
-lea  edi, [rax-8]
-jmp  +0x92
-custom_out:
-mov  edi, ecx
+mov  ecx, total
+div  ecx                  ; edx = (position + 1) % total
+lea  rax, [rip+dial]
+mov  edi, [rax+rdx*4]     ; the station at that position
 jmp  +0x92
 ```
 
 Register use matches the block it replaces (`ecx`, `eax`, `edx` scratch, `edi` the result, `rbx`
-the receiver), both switches are leaf functions the original block already called from this stack,
-and the only entry into the replaced bytes is the `jne` at `+0x5C`, which lands on the `jmp`. The
-two call targets are read from the verified block's own `rel32` rather than resolved by hash.
+the receiver), and the only entry into the replaced bytes is the `jne` at `+0x5C`, which lands on
+the `jmp`.
 
-**Custom stations sit after the vanilla dial, in slot order** - the same rule the world devices'
-script-side cycling uses.
+**The tables hold every station in dial order, custom ones at their frequency.** The fourteen's
+order is asked of the game's own switch at patch time, through the `call` target read from the
+verified block, so it cannot drift; each custom station is then inserted before the first station
+whose frequency is above its own, using the fourteen vanilla frequencies the plugin carries
+(`kVanillaFrequency`) and the number at the front of its display name. A custom station with no
+number at the front sits after every station that has one, in slot order. The same two tables are
+handed to the script-side receivers through `NRF_DialPosition` and `NRF_DialStation`, so a car, a
+world device and the pocket radio step through one dial.
 
 ## Exactly three sites divide by fourteen
 
@@ -193,7 +192,7 @@ fourteen vanilla entries are copied, and the custom stations appended.
 | vehicle receiver `cmp edi` | 14 to the new total |
 | name reader one | division erased, `cmp` to total - 1, `lea rdx` to the new table |
 | name reader two | division erased around the `inc`, `cmp` to total - 1, `disp32` to the new table |
-| vehicle receiver `+0x68..+0x92` | `jmp` to the next-station stub, which carries the total as an imm32 |
+| vehicle receiver `+0x68..+0x92` | `jmp` to the next-station stub, which carries the total as an imm32 and the dial tables behind it |
 
 `[M]` Every hash resolved to the RVA the disassembly predicted, and every radio still works with the
 roster at fifteen.

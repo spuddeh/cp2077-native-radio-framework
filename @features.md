@@ -19,8 +19,9 @@
   the send trim.
 - A manifest is read by a strict JSON parser and checked field by field. Every fault is logged with
   the file and the line, and a manifest with one is skipped whole. Covered by `plugin/tests/`.
-- Next-station in a car steps past the vanilla fourteen into the custom stations, in slot order, and
-  wraps at the end of the roster.
+- One dial on every receiver: a custom station sits at the frequency at the front of its display
+  name, between the vanilla stations, in the vehicle list and in the next/previous order of a car,
+  a world device and the pocket radio.
 
 ## Verified in game
 
@@ -38,8 +39,8 @@
 
 - The Radioport level against a vanilla station, by capture rather than by ear.
 - Song titles outside the Radioport.
-- Next-station in a car from the last vanilla station reaches the first custom one, and from the
-  last custom one wraps to 88.9.
+- Next-station in a car and on a world device passes through a custom station at its frequency,
+  and the vehicle list shows it there.
 
 ## Planned
 

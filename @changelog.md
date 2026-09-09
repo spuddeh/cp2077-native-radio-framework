@@ -20,7 +20,17 @@
   is written, that calls the game's own switches for the fourteen, uses the slot index as the dial
   position past them, and takes the total as a 32-bit immediate. Eight more bytes verified first;
   the stub's call targets are read from the verified block. The dial order the switches encode is
-  88.9 to 107.5, so a custom station follows the last vanilla one in slot order. (#7)
+  88.9 to 107.5. (#7)
+- The plugin owns the dial order. `BuildDial` asks the game's switch for the fourteen's order at
+  patch time, then inserts each custom station before the first station whose frequency is above
+  the number at the front of its display name, against the fourteen vanilla frequencies in
+  `kVanillaFrequency`; a station with no number goes last. The next-station stub reads two tables
+  behind its code (`position[total]`, `dial[total]`) instead of calling the switches, and two new
+  natives, `NRF_DialPosition` and `NRF_DialStation`, hand the same tables to `Dial.reds`:
+  `GetRadioStationUIIndex` / `GetRadioStationByUIIndex` map every station through them, the
+  cycling replacements keep vanilla's Samizdat skip anchored to the station rather than position
+  5, and the vehicle list inserts a custom station at its dial position plus one. One order on
+  every receiver. (#14)
 - `tools/audioxl-feed-probe.patch`: the AudioXL measurement build behind #1, #3 and #15. Logs how the
   engine pulls from `AudioFeed::Execute`, the slot position at voice start and every retire.
 - The engine's station NAME table is extended alongside the roster, so a custom station's label is

@@ -22,7 +22,7 @@ computes a value the game already knows, and nothing in a manifest can disagree 
 | Field | What it is |
 | --- | --- |
 | `name` | the station's `CName`, letters, digits and underscores only, because it is also an event-name prefix and a TweakDB record id. Unique across every installed station mod; first found wins, the log names the loser |
-| `displayName` | plain text. **The frequency at the front**, because the game has no field for it and the vehicle radio list sorts on it |
+| `displayName` | plain text. **The frequency at the front**, because the game has no field for it: the number decides the station's place on the dial, in the vehicle list and in every receiver's next/previous order. A name with no number at the front puts the station after every station that has one |
 | `speaker` | optional DJ: `Stanley`, `MaximumMike`, `Ash`, `Kurtz`, `PoliceDispatch`. Default `None`, which plays |
 | `gain` | optional level trim on the samples, 0 to 1, clamped. Default 0.56 (-5 dB), which lands the custom sound's two Broadcast Sends inside the vanilla per-station range; see `audio-path.md`. Applied through AudioXL's `SetGain` once the row exists, because `RegisterSoundEx`'s gain never reaches the samples |
 | `icon` / `atlas` | optional inkatlas part and the atlas holding it. Default: the game's own `no_station` part in `base\gameplay\gui\common\icons\radiostations_icons.inkatlas` |
@@ -58,6 +58,7 @@ bug somewhere else, and the log line is the whole of what the author needs.
 | Value | Derived as | Why not in the manifest |
 | --- | --- | --- |
 | roster slot, `ERadioStationList` value | 14 + the order the manifest was found in | depends on which other station mods are installed |
+| dial position | every station sorted by frequency, the fourteen in the game's own order | the same reason, and it is what makes a car, a world device and the pocket radio agree |
 | internal station id | slot + 8 | an engine bias, see the [roster page](compiled-station-roster.md) |
 | track event name | `<name>_NN`, two digits from 01 | a filename with a space or an accent must never reach an event name |
 | Wwise id of the event | FNV-1 32-bit of the lowercased event name, from AudioXL | it is a function of the name |
@@ -100,9 +101,11 @@ asymmetric there and the replacements keep it: going forward, UI index 4 is mapp
 6 is mapped to 5. This is also why the framework cannot coexist with RadioExt or RadioXL, which
 replace the same functions.
 
-`[M]` The vehicle radio list is frequency-ordered. Vanilla pushes its fifteen ascending after
-No Station (88.9, 89.3, 89.7 …), so a custom station is inserted at its parsed frequency rather than
-appended. No Station has no frequency, parses as -1, and stays first.
+`[M]` The vehicle radio list is frequency-ordered. Vanilla pushes No Station and then its fourteen
+in dial order (88.9, 89.3, 89.7 …), so the list is the dial with one row in front, and a custom
+station is inserted at its dial position plus one. The cycling functions and the vehicle's native
+next-station step read the same dial, so every receiver steps through the stations in one order,
+with vanilla's skip of Samizdat Radio kept and anchored to the station rather than its number.
 
 `[M]` `RadioInkGameController.SetupStationLogo` (the world device) sets only the texture part on a
 widget that already has the vanilla atlas. A custom station needs both atlas and part, which
