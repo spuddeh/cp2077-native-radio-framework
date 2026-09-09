@@ -42,14 +42,13 @@ public class NRFAudio {
   //
   // 1 is AudioXL's success and 69 is a bank already loaded; both mean the type resolves.
   @if(ModuleExists("AudioXL"))
-  public final static func LoadBank(path: String) -> Bool {
-    let result: Int32 = AudioXLNative.LoadBank(path);
-    return result == 1 || result == 69;
+  public final static func LoadBankResult(path: String) -> Int32 {
+    return AudioXLNative.LoadBank(path);
   }
 
   @if(!ModuleExists("AudioXL"))
-  public final static func LoadBank(path: String) -> Bool {
-    return false;
+  public final static func LoadBankResult(path: String) -> Int32 {
+    return 0;
   }
 
   // The level trim on a row's samples. False when the row does not exist yet: AudioXL queues a

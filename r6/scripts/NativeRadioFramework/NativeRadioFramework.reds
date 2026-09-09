@@ -196,13 +196,18 @@ public class NativeRadioFramework extends ScriptableService {
   // is trimmed 3 to 7 dB above every station on the dial. The fallback is not a degraded mode - it
   // is what every station sounded like before the bank existed - so a bank that fails to load costs
   // level accuracy and nothing else.
+  // **The load result is reported, not interpreted.** A boolean says which branch was taken and
+  // nothing about why, and the codes differ: 1 is a load, 69 a bank already loaded, and the rest are
+  // distinct failures worth telling apart.
   private func AudioType() -> CName {
-    if NRFAudio.LoadBank("red4ext/plugins/NativeRadioFramework/nrf_routing.bnk") {
-      this.m_ownType = true;
+    let path: String = "red4ext/plugins/NativeRadioFramework/nrf_routing.bnk";
+    let result: Int32 = NRFAudio.LoadBankResult(path);
+    this.m_ownType = result == 1 || result == 69;
+    let chosen: String = this.m_ownType ? "nrf_radio" : "mod_sfx_radio (the game's)";
+    NRFLog(s"routing bank load returned \(result), type is \(chosen)");
+    if this.m_ownType {
       return n"nrf_radio";
     }
-    NRFLog("the routing bank did not load - falling back to the game's mod_sfx_radio type");
-    this.m_ownType = false;
     return n"mod_sfx_radio";
   }
 
@@ -244,6 +249,10 @@ public class NativeRadioFramework extends ScriptableService {
       station += 1;
     }
     NRFLog(s"registered \(registered) track(s) with AudioXL");
+    // **A registration returning true says the row exists, not that anything can play it.** If the
+    // type's event is absent the engine posts into nothing, which sounds exactly like a broken file.
+    let probe: CName = NRF_StationTrack(0, 0);
+    NRFLog(s"probe \(probe): row \(NRFAudio.Has(probe)), wwiseId \(NRFAudio.WwiseId(probe)), decoded \(NRFAudio.Duration(probe)) s");
     if this.m_gainPending {
       this.ApplyGains();
     }
