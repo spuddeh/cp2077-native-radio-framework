@@ -124,10 +124,12 @@ struct Track
     float duration = 0.0f;  // seconds, from the file's headers - what the station schedules against
 };
 
-// The level trim every station gets unless its manifest says otherwise. -5 dB: the game's custom-radio
-// object sends a world device 3 to 7 dB hotter than any vanilla station, and a full-scale sample wraps
-// there between -4 and -5 dB of trim, measured. Both of its sends land inside the vanilla range here.
-constexpr float kDefaultGain = 0.56f;
+// The level trim every station gets unless its manifest says otherwise. **A station's level belongs
+// on its send, not in its samples**, and the framework's own routing bank puts it there, so the
+// default here leaves the audio alone. The correction for the game's own custom-radio object, whose
+// send reaches a world device 3 to 7 dB hotter than any vanilla station, is applied in script and
+// only on the path that uses that object.
+constexpr float kDefaultGain = 1.0f;
 
 struct Station
 {

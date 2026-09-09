@@ -36,6 +36,14 @@ MOD_SFX_MONO = 772871769      # -2.0 dB, the Radioport
 # Radio Vexelstrom's pair: -2.0 dB stereo and -5.0 dB mono, the middle of the dial on both sends.
 # A framework's default belongs mid-dial so a custom station sounds like an average station rather
 # than the quietest one. A station manifest's `gain` remains the per-station override.
+#
+# **These are COPIED into this bank rather than cited from radio.bnk.** A cited id that a game patch
+# or another mod moves does not error: the effect is simply absent, the sound leaves the broadcast
+# chain, and it plays its dry output about 15 dB hot at every distance while every script-side check
+# still passes. A copy cannot be moved out from under it.
+#
+# What a copy gives up is tracking: a retuned vanilla dial no longer moves these. Re-derive the
+# trims after a game patch and rebuild - the method is in the mod's docs.
 STATION_STEREO = 813819638
 STATION_MONO = 870978591
 
@@ -101,6 +109,8 @@ def build(mod_path, radio_path):
     event_id = fnv(TYPE_NAME)
     action_id = fnv(TYPE_NAME + "_action")
     sound_id = fnv(TYPE_NAME + "_sound")
+    stereo_id = fnv(TYPE_NAME + "_send_stereo")
+    mono_id = fnv(TYPE_NAME + "_send_mono")
 
     event_type, event_body = mod[TEMPLATE_EVENT]
     assert event_type == HIRC_EVENT and event_body[4] == 1, "the template event is not a single-action event"
@@ -124,20 +134,33 @@ def build(mod_path, radio_path):
 
     sound = bytearray(sound_body)
     struct.pack_into("<I", sound, 0, sound_id)
-    assert replace_u32(sound, MOD_SFX_STEREO, STATION_STEREO) == 1, "the sound cites its stereo send more than once"
-    assert replace_u32(sound, MOD_SFX_MONO, STATION_MONO) == 1, "the sound cites its mono send more than once"
+    assert replace_u32(sound, MOD_SFX_STEREO, stereo_id) == 1, "the sound cites its stereo send more than once"
+    assert replace_u32(sound, MOD_SFX_MONO, mono_id) == 1, "the sound cites its mono send more than once"
 
-    hirc = object_bytes(HIRC_SOUND, sound)
+    # A send's only station-specific content is one curve point - `radio_broadcast_mute` at x = 0,
+    # which is the station's standing level. Everything else, the channel curves included, is
+    # identical across all 55 sends in the game. So a copy carrying a new id behaves exactly as the
+    # original, and the mute the engine applies on combat or a device switching off still reaches it.
+    sends = b""
+    for source, new_id in ((STATION_STEREO, stereo_id), (STATION_MONO, mono_id)):
+        send_type, send_body = radio[source]
+        body = bytearray(send_body)
+        struct.pack_into("<I", body, 0, new_id)
+        sends += object_bytes(send_type, body)
+
+    hirc = sends
+    hirc += object_bytes(HIRC_SOUND, sound)
     hirc += object_bytes(HIRC_ACTION, action)
     hirc += object_bytes(HIRC_EVENT, event)
-    hirc = struct.pack("<I", 3) + hirc
+    hirc = struct.pack("<I", 5) + hirc
 
     bkhd = struct.pack("<IIIIII", BANK_VERSION, bank_id, LANGUAGE_ID, 16, 476, 0)
     bkhd += struct.pack("<IIII", bank_id, 1, 0, 0)
 
     data = b"BKHD" + struct.pack("<I", len(bkhd)) + bkhd
     data += b"HIRC" + struct.pack("<I", len(hirc)) + hirc
-    return data, dict(bank=bank_id, event=event_id, action=action_id, sound=sound_id)
+    return data, dict(bank=bank_id, event=event_id, action=action_id, sound=sound_id,
+                      send_stereo=stereo_id, send_mono=mono_id)
 
 
 if __name__ == "__main__":

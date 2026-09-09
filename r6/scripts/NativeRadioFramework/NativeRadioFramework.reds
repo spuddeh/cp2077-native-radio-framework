@@ -38,6 +38,18 @@ public func NRFScheduleMargin() -> Float {
   return 0.5;
 }
 
+// **A station's level belongs on its send, not in its samples**, so a track registered against this
+// framework's own type is handed to AudioXL untouched. The game's `mod_sfx_radio` object has no send
+// this framework can set, and its own reaches a world device 3 to 7 dB hotter than any vanilla
+// station, so a full-scale sample wraps there. This is the trim that path needs, measured: -5 dB
+// lands both of its sends inside the vanilla range.
+//
+// It MULTIPLIES a station's own gain rather than replacing it, so a manifest that asks for a level
+// gets the same relative result whichever type carries the sound.
+public func NRFFallbackTrim() -> Float {
+  return 0.56;
+}
+
 // Supplied by the plugin, which reads the station manifests. The list is declared once, in the
 // manifest, and read from here - never restated in script.
 public native func NRF_StationCount() -> Int32;
@@ -124,6 +136,7 @@ public class NativeRadioFramework extends ScriptableService {
   private let m_gainPending: Bool;
   private let m_gainPolls: Int32;
   private let m_clock: ref<NRFStationClock>;
+  private let m_ownType: Bool;
 
   private cb func OnLoad() {
     let cb = GameInstance.GetCallbackSystem();
@@ -185,10 +198,20 @@ public class NativeRadioFramework extends ScriptableService {
   // level accuracy and nothing else.
   private func AudioType() -> CName {
     if NRFAudio.LoadBank("red4ext/plugins/NativeRadioFramework/nrf_routing.bnk") {
+      this.m_ownType = true;
       return n"nrf_radio";
     }
     NRFLog("the routing bank did not load - falling back to the game's mod_sfx_radio type");
+    this.m_ownType = false;
     return n"mod_sfx_radio";
+  }
+
+  // What a track's samples are scaled by. 1.0 on this framework's own type, because the send carries
+  // the level there; the fallback's trim on the game's type, which has no send to set.
+  private func Gain(station: Int32) -> Float {
+    let gain: Float = NRF_StationGain(station);
+    if this.m_ownType { return gain; }
+    return gain * NRFFallbackTrim();
   }
 
   private func RegisterAudio() -> Void {
@@ -201,7 +224,7 @@ public class NativeRadioFramework extends ScriptableService {
     let count: Int32 = NRF_StationCount();
     while station < count {
       let tracks: Int32 = NRF_StationTrackCount(station);
-      let gain: Float = NRF_StationGain(station);
+      let gain: Float = this.Gain(station);
       let t: Int32 = 0;
       while t < tracks {
         let event: CName = NRF_StationTrack(station, t);
@@ -234,7 +257,7 @@ public class NativeRadioFramework extends ScriptableService {
     let count: Int32 = NRF_StationCount();
     while station < count {
       let tracks: Int32 = NRF_StationTrackCount(station);
-      let gain: Float = NRF_StationGain(station);
+      let gain: Float = this.Gain(station);
       let t: Int32 = 0;
       while t < tracks {
         let event: CName = NRF_StationTrack(station, t);
