@@ -35,25 +35,31 @@ public func NRFClockPlaying(track: CName) -> Bool {
 
 public class NRFClockTick extends DelayCallback {
   public let clock: wref<NRFStationClock>;
+  public let generation: Int32;
 
   public func Call() -> Void {
     if IsDefined(this.clock) {
-      this.clock.Tick();
+      this.clock.Tick(this.generation);
     }
   }
 }
 
-// The watch. One instance, owned by the service, started when a session is ready and re-armed by
-// each tick. A tick with no DelaySystem stops re-arming; the next Session/Ready starts it again.
+// The watch. One instance, owned by the service, started whenever a session becomes ready and
+// re-armed by each tick.
+//
+// **A session's delay callbacks do not survive that session, and Session/Ready fires more than
+// once** - the main menu is a session, and loading a save is another. A watch that starts on the
+// first and refuses to start again is dead from the moment the save loads: its chain was cleared
+// with the session that owned it, and nothing re-enters. So every Session/Ready starts a new chain,
+// and a GENERATION retires the old one rather than letting two run side by side.
 public class NRFStationClock extends IScriptable {
 
   private let m_slots: array<ref<NRFSlot>>;
-  private let m_running: Bool;
+  private let m_generation: Int32;
   private let m_ticks: Int32;
   private let m_reports: Int32;
 
   public func Start() -> Void {
-    if this.m_running { return; }
     let count: Int32 = NRF_StationCount();
     if count <= 0 { return; }
 
@@ -64,18 +70,27 @@ public class NRFStationClock extends IScriptable {
         if IsNameValid(name) {
           let slot = new NRFSlot();
           slot.station = name;
-          slot.track = n"";
-          slot.at = 0.0;
-          slot.seen = false;
           ArrayPush(this.m_slots, slot);
         }
         i += 1;
       }
     }
 
-    this.m_running = true;
-    NRFLog(s"watching the schedule of \(ArraySize(this.m_slots)) station(s)");
-    this.Tick();
+    // A new session restarts every station's schedule and its clock, so nothing observed under the
+    // old one can be counted from.
+    let i: Int32 = 0;
+    while i < ArraySize(this.m_slots) {
+      this.m_slots[i].track = n"";
+      this.m_slots[i].at = 0.0;
+      this.m_slots[i].seen = false;
+      i += 1;
+    }
+    this.m_ticks = 0;
+    this.m_reports = 0;
+
+    this.m_generation += 1;
+    NRFLog(s"watching the schedule of \(ArraySize(this.m_slots)) station(s), generation \(this.m_generation)");
+    this.Tick(this.m_generation);
   }
 
   // **The engine's "not playing" answer is the CName `NoneTrack`, which is a valid name.** Testing
@@ -83,7 +98,8 @@ public class NRFStationClock extends IScriptable {
   // holding a single track forever and no boundary is ever seen. A slot takes its first real track
   // without calling it a boundary; only a change from one real track to another is one, and only
   // then is an offset knowable.
-  public func Tick() -> Void {
+  public func Tick(generation: Int32) -> Void {
+    if generation != this.m_generation { return; }
     let now: Float = this.Now();
     this.m_ticks += 1;
     this.Report(now);
@@ -102,7 +118,7 @@ public class NRFStationClock extends IScriptable {
       }
       i += 1;
     }
-    this.Arm();
+    this.Arm(generation);
   }
 
   // **A watch that logs only what it expects cannot tell silence from a stopped clock.** This says
@@ -159,14 +175,12 @@ public class NRFStationClock extends IScriptable {
     return EngineTime.ToFloat(GameInstance.GetSimTime(GetGameInstance()));
   }
 
-  private func Arm() -> Void {
+  private func Arm(generation: Int32) -> Void {
     let delay = GameInstance.GetDelaySystem(GetGameInstance());
-    if !IsDefined(delay) {
-      this.m_running = false;
-      return;
-    }
+    if !IsDefined(delay) { return; }
     let tick = new NRFClockTick();
     tick.clock = this;
+    tick.generation = generation;
     delay.DelayCallback(tick, 1.0);
   }
 }
