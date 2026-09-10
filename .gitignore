@@ -12,3 +12,6 @@ images/
 
 # Loopback recordings for the crackle investigation (#3); tens of MB, never committed
 audio-tests/
+
+# WolvenKit build output of the icon project under tools/; the shipped archive is DV's copy
+tools/wolvenkit/packed/
