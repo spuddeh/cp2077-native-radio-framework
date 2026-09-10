@@ -173,6 +173,12 @@ public class RadioXLStationClock extends IScriptable {
         let verdict: String = slot.pending ? "pending was accepted by PlayFrom" : "PlayFrom had refused the pending start";
         RadioXLLog(s"\(slot.station) track \(slot.index) restarted at \(position) s, pending start was \(slot.position) s - \(verdict)");
       }
+      // Live with no position is a voice AudioXL counts but does not report on. Seen after a
+      // second re-post of the same row; logged so the window is visible, once per stretch.
+      if position <= 0.0 && slot.position > 0.0 {
+        RadioXLLog(s"\(slot.station) track \(slot.index): live, position reads 0 (was \(slot.position) s)");
+        slot.position = 0.0;
+      }
       if position > 0.0 {
         slot.position = position;
         let accepted: Bool = RadioXLAudio.PlayFrom(slot.row, position);
