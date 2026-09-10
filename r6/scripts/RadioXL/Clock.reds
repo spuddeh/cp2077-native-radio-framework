@@ -158,17 +158,28 @@ public class RadioXLStationClock extends IScriptable {
     this.Arm(generation);
   }
 
-  // The resume itself. While the current row has a voice, its position is the point the next voice
-  // on that row starts from. The offset is consumed by one voice, so it is written on every tick
-  // the row is heard; the last write before a tune-away is the one the tune-back uses.
+  // The resume itself. **A receiver that tunes away does not stop the voice**: it keeps playing,
+  // unheard, and the station carries on, so the point to resume from is wherever that voice is now.
+  // A tune-back posts the row again, and the position read here is written back each tick as the
+  // start of that next voice. The offset is consumed by one voice, so it is written every tick.
   private func Follow(slot: ref<RadioXLSlot>) -> Void {
     if !IsNameValid(slot.row) { return; }
     let playing: Bool = RadioXLAudio.IsPlaying(slot.row);
     if playing {
       let position: Float = RadioXLAudio.Position(slot.row);
+      // A position behind the last one is a fresh voice on the row. What it started from, against
+      // what was pending, says whether AudioXL applied the offset to a voice the engine posted.
+      if position > 0.0 && position + 0.5 < slot.position {
+        let verdict: String = slot.pending ? "pending was accepted by PlayFrom" : "PlayFrom had refused the pending start";
+        RadioXLLog(s"\(slot.station) track \(slot.index) restarted at \(position) s, pending start was \(slot.position) s - \(verdict)");
+      }
       if position > 0.0 {
         slot.position = position;
-        slot.pending = RadioXLAudio.PlayFrom(slot.row, position);
+        let accepted: Bool = RadioXLAudio.PlayFrom(slot.row, position);
+        if !accepted && slot.pending {
+          RadioXLLog(s"\(slot.station) track \(slot.index): PlayFrom refused \(position) s");
+        }
+        slot.pending = accepted;
       }
       if !slot.playing {
         RadioXLLog(s"\(slot.station) track \(slot.index) playing from \(slot.position) s");
