@@ -1,11 +1,11 @@
-"""Convert a RadioExt station folder into a Native Radio Framework station.
+"""Convert a RadioExt station folder into a RadioXL station.
 
-usage: python radioext-to-nrf.py <radioExt station dir> <output mod dir> <station cname> [--wav] [--rate 48000]
+usage: python radioext-to-radioxl.py <radioExt station dir> <output mod dir> <station cname> [--wav] [--rate 48000]
 
 <radioExt station dir>  the folder holding metadata.json and the audio files, e.g.
                         .../cyber_engine_tweaks/mods/radioExt/radios/phonkwave_radio
 <output mod dir>        a mod folder; the station lands in
-                        red4ext/plugins/NativeRadioFramework/stations/<folder name>/
+                        red4ext/plugins/RadioXL/stations/<folder name>/
 <station cname>         the station's CName, e.g. radio_station_21_phonkwave
 
 RadioExt's metadata carries displayName, fm, order, customIcon {inkAtlasPath, inkAtlasPart} and a
@@ -50,7 +50,7 @@ def main():
     ordered = [f for f in meta.get("order", []) if f in files]
     files = ordered + [f for f in files if f not in ordered]
 
-    station_dir = os.path.join(out_mod, "red4ext", "plugins", "NativeRadioFramework", "stations",
+    station_dir = os.path.join(out_mod, "red4ext", "plugins", "RadioXL", "stations",
                                os.path.basename(os.path.normpath(src)))
     audio_dir = os.path.join(station_dir, "audio")
     os.makedirs(audio_dir, exist_ok=True)

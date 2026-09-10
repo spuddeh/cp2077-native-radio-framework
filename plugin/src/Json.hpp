@@ -1,5 +1,5 @@
 // ======================================================================================
-// Mod Name: Native Radio Framework
+// Mod Name: RadioXL
 // Author: Spuddeh
 // Description: A strict JSON reader that reports the line and column of the first fault.
 // File Version: 0.2.0
@@ -19,7 +19,7 @@
 #include <utility>
 #include <vector>
 
-namespace nrf
+namespace radioxl
 {
 struct JsonValue
 {
@@ -530,4 +530,4 @@ inline bool ParseJson(std::string_view aText, JsonValue& aOut, JsonError& aError
 {
     return JsonReader::Parse(aText, aOut, aError);
 }
-} // namespace nrf
+} // namespace radioxl

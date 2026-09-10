@@ -1,5 +1,5 @@
 // ======================================================================================
-// Mod Name: Native Radio Framework
+// Mod Name: RadioXL
 // Author: Spuddeh
 // Description: Extends the engine's radio station roster so custom stations are real stations.
 // File Version: 0.2.0
@@ -137,9 +137,9 @@ constexpr uint8_t kCmpEdi[] = {0x83, 0xFF};
 constexpr int kVanillaCount = 14;
 constexpr int kMaxStations = 127;  // both bounds are 8-bit immediates
 
-using nrf::kDefaultGain;
-using nrf::Station;
-using nrf::Track;
+using radioxl::kDefaultGain;
+using radioxl::Station;
+using radioxl::Track;
 
 // --- the dial ----------------------------------------------------------------------------------
 // The order a receiver steps through stations is by FREQUENCY, the number at the front of a
@@ -177,7 +177,7 @@ constexpr float kVanillaFrequency[kVanillaCount] = {
 // so the keys sit in the same namespace as the vanilla station keys they stand beside.
 std::string StationKey(const std::string& aStation)
 {
-    return "Gameplay-Devices-Radio-NRF-" + aStation;
+    return "Gameplay-Devices-Radio-RadioXL-" + aStation;
 }
 
 std::string TwoDigit(size_t aIndex)
@@ -196,7 +196,7 @@ std::string TrackEvent(const Station& aStation, size_t aIndex)
 
 std::string TrackKey(const Station& aStation, size_t aIndex)
 {
-    return "Gameplay-Devices-Radio_tracks-NRF-" + aStation.name + "-" + TwoDigit(aIndex);
+    return "Gameplay-Devices-Radio_tracks-RadioXL-" + aStation.name + "-" + TwoDigit(aIndex);
 }
 
 std::vector<Station> g_stations;
@@ -287,7 +287,7 @@ std::filesystem::path PluginDirectory()
 }
 
 // Every mod drops its own folder, so nothing is shared and nothing can collide.
-//   red4ext/plugins/NativeRadioFramework/stations/<ModName>/station.json
+//   red4ext/plugins/RadioXL/stations/<ModName>/station.json
 void LoadManifests()
 {
     const auto root = PluginDirectory() / "stations";
@@ -329,7 +329,7 @@ void LoadManifests()
 
         // Every fault is logged as <Mod>/station.json:<line>: <what>, and a manifest with one is
         // skipped whole. A station loaded with a field missing looks like a bug somewhere else.
-        if (!nrf::ReadManifest(text, where, station, [](const std::string& aLine) { Log(aLine); }))
+        if (!radioxl::ReadManifest(text, where, station, [](const std::string& aLine) { Log(aLine); }))
         {
             Log(where + ": skipped");
             continue;
@@ -341,7 +341,7 @@ void LoadManifests()
         double total = 0.0;
         for (auto it = station.tracks.begin(); it != station.tracks.end();)
         {
-            it->duration = nrf::AudioDuration(std::filesystem::u8path(station.folder) / std::filesystem::u8path(it->file));
+            it->duration = radioxl::AudioDuration(std::filesystem::u8path(station.folder) / std::filesystem::u8path(it->file));
             if (it->duration <= 0.0f)
             {
                 Log(station.source + ": '" + it->file +
@@ -852,7 +852,7 @@ void OutString(RED4ext::CString* aOut, const std::string& aText)
 }
 } // namespace
 
-void NRF_StationCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
+void RadioXL_StationCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
 {
     ++aFrame->code;
     if (aOut)
@@ -863,7 +863,7 @@ void NRF_StationCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32
 
 // The dial order, for the script-side receivers. -1 when the roster is not patched or the value
 // is off the dial, and the caller falls back to the vanilla maps.
-void NRF_DialPosition(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
+void RadioXL_DialPosition(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
 {
     int32_t station = -1;
     RED4ext::GetParameter(aFrame, &station);
@@ -875,7 +875,7 @@ void NRF_DialPosition(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32
     }
 }
 
-void NRF_DialStation(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
+void RadioXL_DialStation(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
 {
     int32_t position = -1;
     RED4ext::GetParameter(aFrame, &position);
@@ -887,7 +887,7 @@ void NRF_DialStation(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_
     }
 }
 
-void NRF_StationName(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
+void RadioXL_StationName(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
 {
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
@@ -899,7 +899,7 @@ void NRF_StationName(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ex
     }
 }
 
-void NRF_StationKey(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
+void RadioXL_StationKey(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
 {
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
@@ -911,7 +911,7 @@ void NRF_StationKey(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext
     }
 }
 
-void NRF_StationDisplayName(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+void RadioXL_StationDisplayName(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
@@ -920,7 +920,7 @@ void NRF_StationDisplayName(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame,
     OutString(aOut, s ? (s->displayName.empty() ? s->name : s->displayName) : std::string());
 }
 
-void NRF_StationIcon(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+void RadioXL_StationIcon(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
@@ -929,7 +929,7 @@ void NRF_StationIcon(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ex
     OutString(aOut, s ? s->icon : std::string());
 }
 
-void NRF_StationAtlas(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+void RadioXL_StationAtlas(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
@@ -938,7 +938,7 @@ void NRF_StationAtlas(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4e
     OutString(aOut, s ? s->atlas : std::string());
 }
 
-void NRF_StationSpeaker(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+void RadioXL_StationSpeaker(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
@@ -950,7 +950,7 @@ void NRF_StationSpeaker(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED
 // The level trim for every track of a station, applied through AudioXL's SetGain once the row
 // exists. RegisterSoundEx's own gain argument is stored in the engine's registry entry and never
 // reaches the samples, so it is not the way to set this.
-void NRF_StationGain(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t)
+void RadioXL_StationGain(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t)
 {
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
@@ -960,7 +960,7 @@ void NRF_StationGain(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float*
         *aOut = s ? s->gain : kDefaultGain;
 }
 
-void NRF_StationTrackCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
+void RadioXL_StationTrackCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, int32_t* aOut, int64_t)
 {
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
@@ -972,7 +972,7 @@ void NRF_StationTrackCount(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, 
     }
 }
 
-void NRF_StationTrack(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
+void RadioXL_StationTrack(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
 {
     int32_t index = -1;
     int32_t track = -1;
@@ -989,7 +989,7 @@ void NRF_StationTrack(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4e
                 : RED4ext::CName();
 }
 
-void NRF_StationTrackKey(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
+void RadioXL_StationTrackKey(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CName* aOut, int64_t)
 {
     int32_t index = -1;
     int32_t track = -1;
@@ -1008,7 +1008,7 @@ void NRF_StationTrackKey(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RE
 
 // An absolute path, because AudioXL's RegisterSound takes one and the station mod's folder is the
 // only place the file is known to be.
-void NRF_StationTrackFile(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+void RadioXL_StationTrackFile(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
     int32_t track = -1;
@@ -1027,7 +1027,7 @@ void NRF_StationTrackFile(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, R
 
 // Seconds, from the file's headers: the event table row's duration, which the station schedules
 // its next track against.
-void NRF_StationTrackDuration(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t)
+void RadioXL_StationTrackDuration(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, float* aOut, int64_t)
 {
     int32_t index = -1;
     int32_t track = -1;
@@ -1044,7 +1044,7 @@ void NRF_StationTrackDuration(RED4ext::IScriptable*, RED4ext::CStackFrame* aFram
 }
 
 // The value a localization row is INDEXED by. A row whose primaryKey is 0 resolves for nothing.
-void NRF_StationKeyHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
+void RadioXL_StationKeyHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
 {
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
@@ -1056,7 +1056,7 @@ void NRF_StationKeyHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uin
     }
 }
 
-void NRF_StationTrackKeyHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
+void RadioXL_StationTrackKeyHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
 {
     int32_t index = -1;
     int32_t track = -1;
@@ -1075,7 +1075,7 @@ void NRF_StationTrackKeyHash(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame
 
 // The 64-bit width of the same key. The game keeps its localization rows sorted by primaryKey and
 // finds one by binary search, and a key is registered under both widths so either resolves.
-void NRF_StationKeyHash64(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
+void RadioXL_StationKeyHash64(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
 {
     int32_t index = -1;
     RED4ext::GetParameter(aFrame, &index);
@@ -1087,7 +1087,7 @@ void NRF_StationKeyHash64(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, u
     }
 }
 
-void NRF_StationTrackKeyHash64(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
+void RadioXL_StationTrackKeyHash64(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, uint64_t* aOut, int64_t)
 {
     int32_t index = -1;
     int32_t track = -1;
@@ -1104,7 +1104,7 @@ void NRF_StationTrackKeyHash64(RED4ext::IScriptable*, RED4ext::CStackFrame* aFra
                 : 0;
 }
 
-void NRF_StationTrackTitle(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
+void RadioXL_StationTrackTitle(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, RED4ext::CString* aOut, int64_t)
 {
     int32_t index = -1;
     int32_t track = -1;
@@ -1143,7 +1143,7 @@ void RegisterNatives()
     // table of void pointers - CGlobalFunction::Create deduces the signature from the function.
     const auto reg = [rtti](const char* aName, auto aFn, const char* aReturn, int aParams)
     {
-        const std::string full = std::string("NativeRadioFramework.") + aName;
+        const std::string full = std::string("RadioXL.") + aName;
         auto* fn = RED4ext::CGlobalFunction::Create(full.c_str(), aName, aFn);
         fn->flags.isNative = true;
         if (aParams >= 1)
@@ -1158,32 +1158,32 @@ void RegisterNatives()
         rtti->RegisterFunction(fn);
     };
 
-    reg("NRF_StationCount", &NRF_StationCount, "Int32", 0);
-    reg("NRF_DialPosition", &NRF_DialPosition, "Int32", 1);
-    reg("NRF_DialStation", &NRF_DialStation, "Int32", 1);
-    reg("NRF_StationName", &NRF_StationName, "CName", 1);
-    reg("NRF_StationKey", &NRF_StationKey, "CName", 1);
-    reg("NRF_StationDisplayName", &NRF_StationDisplayName, "String", 1);
-    reg("NRF_StationIcon", &NRF_StationIcon, "String", 1);
-    reg("NRF_StationAtlas", &NRF_StationAtlas, "String", 1);
-    reg("NRF_StationSpeaker", &NRF_StationSpeaker, "String", 1);
-    reg("NRF_StationGain", &NRF_StationGain, "Float", 1);
-    reg("NRF_StationTrackCount", &NRF_StationTrackCount, "Int32", 1);
-    reg("NRF_StationTrack", &NRF_StationTrack, "CName", 2);
-    reg("NRF_StationTrackKey", &NRF_StationTrackKey, "CName", 2);
-    reg("NRF_StationTrackFile", &NRF_StationTrackFile, "String", 2);
-    reg("NRF_StationTrackTitle", &NRF_StationTrackTitle, "String", 2);
-    reg("NRF_StationTrackDuration", &NRF_StationTrackDuration, "Float", 2);
-    reg("NRF_StationKeyHash", &NRF_StationKeyHash, "Uint64", 1);
-    reg("NRF_StationTrackKeyHash", &NRF_StationTrackKeyHash, "Uint64", 2);
-    reg("NRF_StationKeyHash64", &NRF_StationKeyHash64, "Uint64", 1);
-    reg("NRF_StationTrackKeyHash64", &NRF_StationTrackKeyHash64, "Uint64", 2);
+    reg("RadioXL_StationCount", &RadioXL_StationCount, "Int32", 0);
+    reg("RadioXL_DialPosition", &RadioXL_DialPosition, "Int32", 1);
+    reg("RadioXL_DialStation", &RadioXL_DialStation, "Int32", 1);
+    reg("RadioXL_StationName", &RadioXL_StationName, "CName", 1);
+    reg("RadioXL_StationKey", &RadioXL_StationKey, "CName", 1);
+    reg("RadioXL_StationDisplayName", &RadioXL_StationDisplayName, "String", 1);
+    reg("RadioXL_StationIcon", &RadioXL_StationIcon, "String", 1);
+    reg("RadioXL_StationAtlas", &RadioXL_StationAtlas, "String", 1);
+    reg("RadioXL_StationSpeaker", &RadioXL_StationSpeaker, "String", 1);
+    reg("RadioXL_StationGain", &RadioXL_StationGain, "Float", 1);
+    reg("RadioXL_StationTrackCount", &RadioXL_StationTrackCount, "Int32", 1);
+    reg("RadioXL_StationTrack", &RadioXL_StationTrack, "CName", 2);
+    reg("RadioXL_StationTrackKey", &RadioXL_StationTrackKey, "CName", 2);
+    reg("RadioXL_StationTrackFile", &RadioXL_StationTrackFile, "String", 2);
+    reg("RadioXL_StationTrackTitle", &RadioXL_StationTrackTitle, "String", 2);
+    reg("RadioXL_StationTrackDuration", &RadioXL_StationTrackDuration, "Float", 2);
+    reg("RadioXL_StationKeyHash", &RadioXL_StationKeyHash, "Uint64", 1);
+    reg("RadioXL_StationTrackKeyHash", &RadioXL_StationTrackKeyHash, "Uint64", 2);
+    reg("RadioXL_StationKeyHash64", &RadioXL_StationKeyHash64, "Uint64", 1);
+    reg("RadioXL_StationTrackKeyHash64", &RadioXL_StationTrackKeyHash64, "Uint64", 2);
 }
 } // namespace
 
 RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
-    aInfo->name = L"NativeRadioFramework";
+    aInfo->name = L"RadioXL";
     aInfo->author = L"Spuddeh";
     aInfo->version = RED4EXT_V1_SEMVER(0, 2, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;

@@ -25,11 +25,11 @@ computes a value the game already knows, and nothing in a manifest can disagree 
 | `displayName` | plain text. **The frequency at the front**, because the game has no field for it: the number decides the station's place on the dial, in the vehicle list and in every receiver's next/previous order. A name with no number at the front puts the station after every station that has one |
 | `speaker` | optional DJ: `Stanley`, `MaximumMike`, `Ash`, `Kurtz`, `PoliceDispatch`. Default `None`, which plays |
 | `gain` | optional level trim on the samples, 0 to 1, clamped. Default 0.56 (-5 dB), which lands the custom sound's two Broadcast Sends inside the vanilla per-station range; see `audio-path.md`. Applied through AudioXL's `SetGain` once the row exists, because `RegisterSoundEx`'s gain never reaches the samples |
-| `icon` / `atlas` | optional inkatlas part and the atlas holding it. Default: the game's own `no_station` part in `base\gameplay\gui\common\icons\radiostations_icons.inkatlas` |
+| `icon` / `atlas` | optional inkatlas part and the atlas holding it. Default: the RadioXL glyph, part `radioxl` in `radioxl\gui\radioxl_icons.inkatlas`, shipped in the framework's own `archive/pc/mod/RadioXL.archive` |
 | `tracks[].file` | an audio file relative to the manifest's folder: WAV, MP3, OGG, FLAC |
 | `tracks[].title` | optional plain text, shown as written |
 
-Manifests live at `red4ext/plugins/NativeRadioFramework/stations/<Mod>/station.json`, one folder
+Manifests live at `red4ext/plugins/RadioXL/stations/<Mod>/station.json`, one folder
 per mod so nothing is shared. Mod managers discard empty directories, so `stations/` ships a
 README to survive packaging.
 
@@ -63,11 +63,11 @@ bug somewhere else, and the log line is the whole of what the author needs.
 | track event name | `<name>_NN`, two digits from 01 | a filename with a space or an accent must never reach an event name |
 | Wwise id of the event | FNV-1 32-bit of the lowercased event name, from AudioXL | it is a function of the name |
 | track duration | read from the file's headers at plugin load | the file is the only thing that can be right; see [station set](station-set-and-load-order.md) |
-| station label key | `Gameplay-Devices-Radio-NRF-<name>` | the engine's name table holds a key, and a key resolves by string only under `Gameplay-`, `UI-` or `Common-`; see [localization](localization-keys.md) |
-| title key | `Gameplay-Devices-Radio_tracks-NRF-<name>-NN` | `audioRadioTrack` holds a key, in the same namespace as vanilla track keys |
+| station label key | `Gameplay-Devices-Radio-RadioXL-<name>` | the engine's name table holds a key, and a key resolves by string only under `Gameplay-`, `UI-` or `Common-`; see [localization](localization-keys.md) |
+| title key | `Gameplay-Devices-Radio_tracks-RadioXL-<name>-NN` | `audioRadioTrack` holds a key, in the same namespace as vanilla track keys |
 | both hashes of each key | FNV1a32 keeping the key text, FNV1a64 with it cleared | how `onscreens` rows are found; see [localization](localization-keys.md) |
-| `RadioStation` record | `RadioStation.NRF_<name>` with `displayName`, `icon`, `index` = dial position | `index` is a UI index, not the enum: the popup hands `record.Index()` to `SendRadioEvent`, which converts it through `GetRadioStationByUIIndex`. Vanilla carries 0 for 88.9 to 13 for 107.5 as fixed numbers, so **the fourteen vanilla records are rewritten to their new positions** whenever a custom station is installed; otherwise two records share an index, both light up, and either plays the station now at that position |
-| `UIIcon` record | `UIIcon.NRF_<name>` with `atlasPartName`, `atlasResourcePath` | the wheel and the device logo load atlas and part from it |
+| `RadioStation` record | `RadioStation.RadioXL_<name>` with `displayName`, `icon`, `index` = dial position | `index` is a UI index, not the enum: the popup hands `record.Index()` to `SendRadioEvent`, which converts it through `GetRadioStationByUIIndex`. Vanilla carries 0 for 88.9 to 13 for 107.5 as fixed numbers, so **the fourteen vanilla records are rewritten to their new positions** whenever a custom station is installed; otherwise two records share an index, both light up, and either plays the station now at that position |
+| `UIIcon` record | `UIIcon.RadioXL_<name>` with `atlasPartName`, `atlasResourcePath` | the wheel and the device logo load atlas and part from it |
 
 `[M]` TweakDB records must be created from `ScriptableTweak.OnApply`, never from a
 `ScriptableService`. Records written earlier do not survive TweakDB load, and the station then plays
@@ -79,12 +79,12 @@ but appears in no list.
 - **Record ids never collide**, because they carry the station name.
 - **Event names never collide**, because they carry the station name, and AudioXL's registry is
   first-registered-wins by name across every mod, so a prefix on `name` is the modder's one duty.
-- **Nothing vanilla is replaced and the framework ships no archive.** Two station mods cannot
-  conflict on a file.
+- **Nothing vanilla is replaced, and the one archive the framework ships holds only its own glyph.**
+  Two station mods cannot conflict on a file.
 
 ## The script side, and what it wraps
 
-The plugin hands the manifest to redscript through registered natives, `NRF_Station*`. `[M]` A native
+The plugin hands the manifest to redscript through registered natives, `RadioXL_Station*`. `[M]` A native
 declared inside `module X` must be registered as `X.Name`; registered bare it fails script validation
 with *Missing native global function*, and **that stops every redscript mod on the machine from
 compiling**. The same blast radius applies if the `.reds` is installed without the DLL, so the two
@@ -110,7 +110,7 @@ with vanilla's skip of Samizdat Radio kept and anchored to the station rather th
 `[M]` `RadioInkGameController.SetupStationLogo` (the world device) sets only the texture part on a
 widget that already has the vanilla atlas. A custom station needs both atlas and part, which
 `InkImageUtils.RequestSetImage` with the `UIIcon` record id supplies. Whether that lands is open
-([#6](https://github.com/spuddeh/cp2077-native-radio-framework/issues/6)).
+([#6](https://github.com/spuddeh/cp2077-radio-xl/issues/6)).
 
 ## Icon assets
 

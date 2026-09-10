@@ -78,7 +78,7 @@ The four attenuations in `mod.bnk` belong to the occlusion, room, street and cit
 this one.
 
 `[M]` **The trims are the difference, and they are the crackle** (issue
-[#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3)):
+[#3](https://github.com/spuddeh/cp2077-radio-xl/issues/3)):
 
 | sound | stereo send (world devices) | mono send (Radioport) |
 | --- | --- | --- |
@@ -110,7 +110,7 @@ mid-dial and leaves the Radioport at the bottom of the vanilla range. Editing tw
 station with it.
 
 `[M]` **The framework takes a third route: its own custom-sound type, in its own bank.** A type is
-whatever a loaded bank defines, and `nrf_routing.bnk` clones `mod_sfx_radio`'s Event, Play action and
+whatever a loaded bank defines, and `radioxl_routing.bnk` clones `mod_sfx_radio`'s Event, Play action and
 CAkSound, citing its own copies of a vanilla station's two Broadcast Sends instead of that object's.
 The level then comes from the same mechanism every vanilla station uses, on both receivers, and no
 game file is replaced. Measured after the change: **0 wrap artefacts in 550 s** where the same
@@ -163,21 +163,26 @@ From its source, all `[M]`:
    AudioXL's code.
 3. **The render is a copy.** 16-bit frames memcpy'd into Wwise's buffer at the file's own sample
    rate. Bit-exact at gain 1. Wwise resamples.
-4. **It never seeks.** `AudioFeed::Start` sets the voice position to the row's `start` (default 0).
-   The engine keeps a per-slot position field; AudioXL writes it every buffer and never reads it.
-5. **MP3, OGG and FLAC are decoded in full at registration.** `stream` applies to WAV only, which is
-   memory-mapped. Eleven album tracks are about 750 MB of resident PCM.
+4. **It seeks only where told.** `AudioFeed::Start` sets the voice position to the row's `start`
+   (default 0). The engine keeps a per-slot position field; AudioXL writes it every buffer and never
+   reads it. From AudioXL 0.3.0 `PlayFrom(name, seconds)` sets a one-shot start for the next voice
+   on a row and `Position(name)` reads the playing voice's position; that pair is how the framework
+   resumes (`Clock.reds`).
+5. **A compressed track of 45 s or more streams from disk** from AudioXL 0.3.0; shorter ones, and any
+   row with a loop, a start/end region or a rate, are decoded in full at registration. `stream: true`
+   forces streaming. Before 0.3.0 every MP3, OGG and FLAC was resident PCM, eleven album tracks about
+   750 MB.
 6. **Banks load from memory** through the engine's `LoadBankMemoryCopy`.
 
 ## The symptoms, mapped
 
 | Heard | Cause | Mark |
 | --- | --- | --- |
-| Right song after tuning back, from 0:00 | the engine picked the track from its clock; the renderer starts at 0, and the engine hands no offset | `[M]` both sides ([#1](https://github.com/spuddeh/cp2077-native-radio-framework/issues/1)) |
-| Each track plays twice on a world device | declared duration longer than the decoded length by the LAME gapless trim; the engine re-posts the slot | `[M]` cause; fix awaiting a run ([#15](https://github.com/spuddeh/cp2077-native-radio-framework/issues/15)) |
-| World devices quieter; car and Radioport fine | `818835100`'s attenuation, tuned for a broadcast SFX, not music. `RegisterSoundEx`'s `distance` is the untested knob | `[I]` ([#2](https://github.com/spuddeh/cp2077-native-radio-framework/issues/2)) |
-| Static and crackle, at devices only | `mod_sfx_radio`'s stereo send is trimmed +2.9 dB, 3 to 7 dB above every vanilla station; a source clamped at 0 dBFS wraps in the next 16-bit stage | `[M]` fixed by the framework's own type ([#3](https://github.com/spuddeh/cp2077-native-radio-framework/issues/3), [#17](https://github.com/spuddeh/cp2077-native-radio-framework/issues/17)) |
-| Hundreds of MB of RAM | decode at registration | `[M]` ([#4](https://github.com/spuddeh/cp2077-native-radio-framework/issues/4)) |
+| Right song after tuning back, from 0:00 | the engine picked the track from its clock; the renderer starts at 0, and the engine hands no offset | `[M]` both sides; the framework now hands AudioXL the offset itself ([#1](https://github.com/spuddeh/cp2077-radio-xl/issues/1)) |
+| Each track plays twice on a world device | declared duration longer than the decoded length by the LAME gapless trim; the engine re-posts the slot | `[M]` cause; fix awaiting a run ([#15](https://github.com/spuddeh/cp2077-radio-xl/issues/15)) |
+| World devices quieter; car and Radioport fine | `818835100`'s attenuation, tuned for a broadcast SFX, not music. `RegisterSoundEx`'s `distance` is the untested knob | `[I]` ([#2](https://github.com/spuddeh/cp2077-radio-xl/issues/2)) |
+| Static and crackle, at devices only | `mod_sfx_radio`'s stereo send is trimmed +2.9 dB, 3 to 7 dB above every vanilla station; a source clamped at 0 dBFS wraps in the next 16-bit stage | `[M]` fixed by the framework's own type ([#3](https://github.com/spuddeh/cp2077-radio-xl/issues/3), [#17](https://github.com/spuddeh/cp2077-radio-xl/issues/17)) |
+| Hundreds of MB of RAM | decode at registration, before AudioXL 0.3.0 streamed long tracks | `[M]` ([#4](https://github.com/spuddeh/cp2077-radio-xl/issues/4)) |
 
 ## The engine never hands a start offset on this path
 

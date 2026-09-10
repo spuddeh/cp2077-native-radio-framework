@@ -47,8 +47,8 @@ MOD_SFX_MONO = 772871769      # -2.0 dB, the Radioport
 STATION_STEREO = 813819638
 STATION_MONO = 870978591
 
-TYPE_NAME = "nrf_radio"
-BANK_NAME = "nrf_routing"
+TYPE_NAME = "radioxl_radio"
+BANK_NAME = "radioxl_routing"
 
 BANK_VERSION = 150
 LANGUAGE_ID = 393239870

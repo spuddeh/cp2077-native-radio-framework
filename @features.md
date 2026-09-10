@@ -1,18 +1,30 @@
-# Feature List - Native Radio Framework
+# Feature List - RadioXL
 
 ## Implemented
 
 - Custom stations are real engine stations: the compiled roster and station name table are extended
   at plugin load, so the Radioport, world radios and the vehicle radio all play them unwrapped.
 - A station is one manifest per mod, plus its audio files and at most an icon archive. Any number of
-  station mods coexist; nothing vanilla is replaced and the framework ships no archive.
+  station mods coexist; nothing vanilla is replaced, and the framework's one archive holds only its
+  own glyph.
+- A station that names no icon shows the RadioXL glyph, shipped in the framework's archive; the
+  record `UIIcon.RadioXL` exists for a RadioXL 0.1.0 station yaml that names it.
+- Resume: tuning away from a custom station and back continues the track where it left off, within
+  a second. The clock reads the playing voice's position from AudioXL each tick and hands it back as
+  the next voice's start offset (`PlayFrom`, AudioXL 0.3.0); a slot boundary and a new session
+  clear it.
+- "Mute radio when..." - twelve switches in the Redscript Configuration Framework panel, one per
+  `PocketRadioRestrictions` member, all on by default. Off lifts that restriction for a custom
+  station only; a vanilla station selected while it is lifted gets it back. RCF is optional.
+- `RadioXLAPI.RegisterStation(name)`: a RadioXL 0.1.0 station's script compiles and is logged; the
+  station is not created (#10).
 - Each track's length is read from its file at load, so a station runs on the world clock like a
   vanilla one. No durations, event names, Wwise ids or records in a manifest.
 - Station name and song titles are real localization entries, resolved wherever a vanilla one is.
 - The station appears on the vehicle radio wheel, sorted by frequency, with its own name and icon.
 - An optional DJ per station (`speaker`), defaulting to none.
 - A station's level is a send trim, the way every vanilla station's is: the framework loads its own
-  bank, defining the `nrf_radio` custom-sound type carrying copies of a vanilla station's two
+  bank, defining the `radioxl_radio` custom-sound type carrying copies of a vanilla station's two
   Broadcast Sends. No game file is replaced, and the game's own `mod_sfx_radio` type remains the
   fallback if the bank does not load.
 - An optional level trim per station (`gain`, 0..1), applied in the samples through AudioXL on top of
@@ -26,7 +38,6 @@
 ## Verified in game
 
 - Audio on all three receivers, three stations installed side by side, MP3, WAV, FLAC and OGG tracks.
-- A station naming no icon shows the game's own `no_station` glyph.
 - Station name and icon on the Radioport, the vehicle selector, the dashboard and world devices.
 - No crackle at a world device: 0 wrap artefacts in 550 s of capture, true peak -1.4 dBFS, a custom
   station inside the vanilla loudness spread.
@@ -42,12 +53,14 @@
 ## Awaiting in-game verification
 
 - The Radioport level against a vanilla station, by capture rather than by ear.
+- Resume on tune-back (#1): the same song continues within a second of where it stopped, and the
+  track after it starts when it ends rather than the tail repeating.
+- A station naming no icon shows the RadioXL glyph on the selector, the dashboard and a world device.
+- Each mute switch: off keeps a custom station playing through that situation; a vanilla station
+  selected during it is silenced as before.
 
 ## Planned
 
-- Resume where a vanilla station would when switching away and back. Measured: the engine hands no
-  offset on the custom-sound path, so the framework must compute one from its durations and the
-  station clock and pass it to AudioXL as a per-row start (#1).
 - A `blips` array per station, the engine's own field for a spoken station ident between songs. A
   custom station currently has no way to name itself, and an ident placed in `tracks` is shown as a
   song title and takes a rotation slot.

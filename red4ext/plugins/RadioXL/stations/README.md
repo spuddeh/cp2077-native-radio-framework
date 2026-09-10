@@ -3,7 +3,7 @@
 A station is one folder in here, named after the mod that ships it:
 
 ```text
-red4ext/plugins/NativeRadioFramework/stations/<YourMod>/station.json
+red4ext/plugins/RadioXL/stations/<YourMod>/station.json
 ```
 
 Nothing in this folder is shared, so any number of station mods install side by side.
@@ -31,7 +31,7 @@ soundbank, no redscript. Everything else is built from the manifest at load.
 | `displayName` | The label the game shows. Put the frequency at the front. |
 | `speaker` | Optional. The station's DJ. Defaults to `None`. |
 | `gain` | Optional. A level trim on every track, `0` to `1`. Defaults to `0.56`, which is -5 dB. |
-| `icon` | Optional. An inkatlas part name. Defaults to the game's own `no_station` glyph. |
+| `icon` | Optional. An inkatlas part name. Defaults to the RadioXL glyph. |
 | `atlas` | Optional. The inkatlas holding that part, as a depot path (`mymod\gui\icons.inkatlas`, no `base\`). Required when `icon` is set. |
 | `tracks[].file` | An audio file, relative to this manifest's folder. |
 | `tracks[].title` | Optional. The song title, shown as written. |
@@ -58,8 +58,8 @@ path written twice (`"mymod\\gui\\icons.inkatlas"`), or once as a forward slash.
 string, an `icon` with no `atlas` - each names its line in the RED4ext log:
 
 ```text
-[NativeRadioFramework] YourMod/station.json:7: "speaker" must be one of None, Stanley, MaximumMike, Ash, Kurtz, PoliceDispatch: "Stanly"
-[NativeRadioFramework] YourMod/station.json: skipped
+[RadioXL] YourMod/station.json:7: "speaker" must be one of None, Stanley, MaximumMike, Ash, Kurtz, PoliceDispatch: "Stanly"
+[RadioXL] YourMod/station.json: skipped
 ```
 
 A key the framework does not know is logged the same way and ignored, so a typo in `displayName`

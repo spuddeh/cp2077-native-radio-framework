@@ -1,4 +1,39 @@
-# Changelog - Native Radio Framework
+# Changelog - RadioXL
+
+## [0.3.0] - 2026-09-11
+
+### Changed
+- Renamed from Native Radio Framework to RadioXL: the framework takes over DigitalVixen's RadioXL
+  name and Nexus page (33488) from the 0.1.0 script player. Plugin `RadioXL.dll`, redscript module
+  `RadioXL`, natives `RadioXL_*`, records `RadioStation.RadioXL_<name>` / `UIIcon.RadioXL_<name>`,
+  localization keys `...-RadioXL-<name>`, custom-sound type `radioxl_radio` in `radioxl_routing.bnk`
+  (rebuilt; ids are FNV of the new strings), station manifests under
+  `red4ext/plugins/RadioXL/stations/`. GitHub repo `spuddeh/cp2077-radio-xl`.
+- AudioXL 0.3.0 is the minimum. It streams compressed tracks of 45 s or more from disk, which
+  removes the resident-PCM cost that made WAV the recommendation (#4), and adds `PlayFrom`,
+  `Position`, `IsPlaying` and `Pause`.
+
+### Added
+- Resume on tune-back (#1). The engine posts a custom track from 0 and hands no offset, so
+  `Clock.reds` reads the playing voice's position from AudioXL every tick and writes it back to the
+  row as the next voice's start (`PlayFrom`). A slot boundary clears the row that ended; a new
+  session clears every pending start. Awaiting an in-game run.
+- "Mute radio when..." (`Settings.reds`, `Restrictions.reds`): twelve switches in the Redscript
+  Configuration Framework panel, one per `PocketRadioRestrictions` member, all on by default. Off
+  lifts that restriction for a custom station only, through a wrap of `PocketRadio.HandleRestriction`
+  that records the world's value and hands the pocket radio the switched one; a `TurnOn` wrap gives a
+  vanilla station the restriction back. RCF is optional; without it the defaults apply. Combat and
+  police heat, RadioXL 0.1.0's other two switches, are Wwise mix states on the radio buses and have no
+  switch on the game's own radio route.
+- The RadioXL glyph as the fallback icon (#18): `archive/pc/mod/RadioXL.archive` (DV's, one 256x256
+  part) replaces the game's `no_station` part, and `UIIcon.RadioXL` is created at `OnApply` so a
+  RadioXL 0.1.0 station yaml naming it stays valid. The vanilla atlas is still put back on a world
+  device's logo widget for a vanilla station.
+- `RadioXLAPI.RegisterStation(name)`: a RadioXL 0.1.0 station's script compiles and is logged rather
+  than failing script validation for every redscript mod on the machine. The station is not created;
+  adopting the old shape is #10.
+- `r6/storages/RedscriptConfigFramework/RadioXL.card.json` and `RadioXL.docs.txt`: the RCF card and
+  the in-game documentation, written for the framework.
 
 ## [0.2.0] - 2026-09-08
 
@@ -26,7 +61,7 @@
   the number at the front of its display name, against the fourteen vanilla frequencies in
   `kVanillaFrequency`; a station with no number goes last. The next-station stub reads two tables
   behind its code (`position[total]`, `dial[total]`) instead of calling the switches, and two new
-  natives, `NRF_DialPosition` and `NRF_DialStation`, hand the same tables to `Dial.reds`:
+  natives, `RadioXL_DialPosition` and `RadioXL_DialStation`, hand the same tables to `Dial.reds`:
   `GetRadioStationUIIndex` / `GetRadioStationByUIIndex` map every station through them, the
   cycling replacements keep vanilla's Samizdat skip anchored to the station rather than position
   5, and the vehicle list inserts a custom station at its dial position plus one. One order on
@@ -55,7 +90,7 @@
 - A per-station DJ through the manifest's `speaker`, defaulting to `None`.
 - `plugin/src/Duration.hpp`: each track's length read from the audio file's headers at plugin load
   (MP3 via Xing/Info/VBRI or a frame walk, FLAC, Ogg Vorbis, WAV), exposed as
-  `NRF_StationTrackDuration`. A track with no readable length is dropped and logged.
+  `RadioXL_StationTrackDuration`. A track with no readable length is dropped and logged.
 
 ### Fixed
 - Every rip-relative displacement the roster patch writes is range-checked before the cast, and the
@@ -66,12 +101,12 @@
   stage at world devices. First trimmed to 0.56 in the samples through `AudioXLNative.SetGain`,
   which corrects one receiver at a time: the stereo path needs -4.95 dB and the mono path -3.0.
   The level now comes off the samples entirely - see the routing bank below. New optional manifest
-  key `gain` (0..1) and native `NRF_StationGain`. (#3)
-- A station's level is a send trim, carried by `red4ext/plugins/NativeRadioFramework/nrf_routing.bnk`
-  and the `nrf_radio` custom-sound type it defines: a byte clone of `mod_sfx_radio`'s Event, Play
+  key `gain` (0..1) and native `RadioXL_StationGain`. (#3)
+- A station's level is a send trim, carried by `red4ext/plugins/RadioXL/radioxl_routing.bnk`
+  and the `radioxl_radio` custom-sound type it defines: a byte clone of `mod_sfx_radio`'s Event, Play
   action and CAkSound, citing the bank's **own copies** of Radio Vexelstrom's two Broadcast Sends
   (-2.0 dB stereo, -5.0 dB mono) rather than `radio.bnk`'s objects, which a patch could move out
-  from under it. Built by `tools/make_routing_bank.py`; every id is FNV-derived from an `nrf_`
+  from under it. Built by `tools/make_routing_bank.py`; every id is FNV-derived from an `radioxl_`
   string. `kDefaultGain` is 1.0, and the 0.56 applies only on the `mod_sfx_radio` fallback, where it
   multiplies a station's own gain rather than replacing it. Measured: 0 wrap artefacts in 550 s
   against 6,250 in 160 s, true peak -1.4 dBFS, a custom station inside the vanilla loudness spread.
@@ -100,7 +135,7 @@
   written as their resources load; only the AudioXL registration polls.
 - AudioXL routing is `mod_sfx_radio`, the game's own radio route. An `axl_*` type is a 2D sound the
   radio system does not own.
-- Natives are registered module-qualified (`NativeRadioFramework.NRF_*`); a bare registration fails
+- Natives are registered module-qualified (`RadioXL.RadioXL_*`); a bare registration fails
   script validation for every redscript mod on the machine.
 - `RED4EXT_HEADER_ONLY` is no longer defined twice (the SDK's `Common.hpp` defines it).
 
@@ -111,7 +146,7 @@
 - RED4ext plugin that extends the engine's compiled radio station roster, so a custom station is a
   real station rather than a separate player.
 - Vehicle receiver bound raised, so a custom station can be selected in a car.
-- Station manifests discovered from `red4ext/plugins/NativeRadioFramework/stations/<Mod>/station.json`.
+- Station manifests discovered from `red4ext/plugins/RadioXL/stations/<Mod>/station.json`.
 - Redscript service that registers each station's metadata entry and its membership of the station
   map at runtime.
 

@@ -1,5 +1,5 @@
 // ======================================================================================
-// Mod Name: Native Radio Framework
+// Mod Name: RadioXL
 // Author: Spuddeh
 // Description: A station manifest read whole, then checked field by field, every fault by line.
 // File Version: 0.2.0
@@ -19,7 +19,7 @@
 #include <string_view>
 #include <vector>
 
-namespace nrf
+namespace radioxl
 {
 // A track is an audio FILE and a title. Nothing else is written by hand: the length is read from
 // the file's own headers at load, and AudioXL registers the file and supplies the Wwise id. A
@@ -45,7 +45,7 @@ struct Station
     std::string icon;          // an inkatlas part name, or empty for the framework's own glyph
     std::string atlas;         // the inkatlas resource holding that part, or empty for the framework's
     std::string speaker;       // audioRadioSpeakerType - the station's DJ
-    float gain = kDefaultGain; // level trim applied to every track's samples, 0..1; see NRF_StationGain
+    float gain = kDefaultGain; // level trim applied to every track's samples, 0..1; see RadioXL_StationGain
     std::vector<Track> tracks;
     std::string source;        // which manifest it came from, for logging
     std::string folder;        // the manifest's own directory, which track files are relative to
@@ -239,4 +239,4 @@ inline bool ReadManifest(std::string_view aText, const std::string& aWhere, Stat
 
     return ok;
 }
-} // namespace nrf
+} // namespace radioxl

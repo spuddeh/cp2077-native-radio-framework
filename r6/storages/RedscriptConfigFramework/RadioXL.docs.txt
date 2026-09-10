@@ -1,0 +1,96 @@
+[color=#e06666][size=6][b]- Introduction -[/b][/size][/color]
+
+RadioXL adds radio stations to Cyberpunk 2077 as real stations of the game's own radio. A station built on it plays on the Radioport, in every vehicle and on the radios placed around Night City, with its own name, icon and song titles, and the dial, the radio hotkey, the equaliser and the dashboard treat it exactly as they treat the stations the game ships.
+
+A station mod is one small file and a folder of audio. RadioXL reads the rest from the files.
+
+[i]TL;DR - your music, on every radio in the game, through the game's own radio.[/i]
+
+
+[color=#e06666][size=6][b]- For Players -[/b][/size][/color]
+
+RadioXL is a framework. Install it, then install stations built on it, or build one yourself in the time it takes to copy a folder of songs.
+
+[b]Requirements[/b]
+[list]
+[*][url=https://www.nexusmods.com/cyberpunk2077/mods/2380]RED4ext[/url][/*]
+[*][url=https://www.nexusmods.com/cyberpunk2077/mods/1511]redscript[/url][/*]
+[*][url=https://www.nexusmods.com/cyberpunk2077/mods/7780]Codeware[/url][/*]
+[*][url=https://www.nexusmods.com/cyberpunk2077/mods/4197]TweakXL[/url][/*]
+[*][url=https://www.nexusmods.com/cyberpunk2077/mods/33442]AudioXL[/url] 0.3.0 or later[/*]
+[*]Game version 2.31.[/*]
+[/list]
+Optional:
+[url=https://www.nexusmods.com/cyberpunk2077/mods/30726]Redscript Configuration Framework[/url] - the settings panel below.
+[url=https://www.nexusmods.com/cyberpunk2077/mods/31920]RedLogger[/url] - a log of what was registered, in r6\logs\mods\.
+
+[b]Install[/b]
+Drop the archive into your mod manager. The plugin and the scripts always travel together: installed apart, the scripts fail to compile.
+
+[b]Uninstall[/b]
+Remove RadioXL and every station built on it. RadioXL keeps nothing in your saves.
+
+[b]Coming from RadioXL 0.1.0[/b]
+A station written for 0.1.0 (a yaml, a script and an AudioXL sounds.json) does not play on this release. Its script still compiles, and the log says the station was seen. The station's author converts it to the manifest below; the songs and the icon are reused as they are.
+
+
+[color=#e06666][size=6][b]- Adding a station -[/b][/size][/color]
+
+A station is one folder under
+[code]red4ext\plugins\RadioXL\stations\<YourMod>\[/code]
+holding a [b]station.json[/b] and the audio files it names.
+
+[quote][code]{
+  "name": "radio_station_20_tool",
+  "displayName": "104.9 Tool FM",
+  "icon": "tool_fm",
+  "atlas": "toolfm\\gui\\tool_fm.inkatlas",
+  "tracks": [
+    { "file": "audio/Tool - Vicarious.mp3", "title": "Tool - Vicarious" },
+    { "file": "audio/Tool - Jambi.mp3",     "title": "Tool - Jambi" }
+  ]
+}[/code][/quote]
+
+[list]
+[*][b]name[/b] is the station's identity: letters, digits and underscores, unique among installed stations.[/*]
+[*][b]displayName[/b] starts with the frequency. The dial is sorted by it, so 104.9 lands between 103.5 and 106.9. Taken: 88.9, 89.3, 89.7, 91.9, 92.9, 95.2, 96.1, 98.7, 99.9, 101.9, 103.5, 106.9, 107.3 and 107.5.[/*]
+[*][b]icon[/b] and [b]atlas[/b] are optional: an inkatlas part and the atlas holding it, shipped in an archive of your own. Leave both out and the station shows the RadioXL glyph.[/*]
+[*][b]tracks[/b] play in order, on the station's own clock, the way a vanilla station plays. WAV, MP3, OGG and FLAC.[/*]
+[*][b]speaker[/b] is optional and names a DJ: Stanley, MaximumMike, Ash, Kurtz or PoliceDispatch.[/*]
+[/list]
+
+No durations, event names, indices, records, yaml or script. RadioXL reads each track's length from the file and builds everything else at load. A manifest with a mistake in it is skipped, and the log names the file and the line.
+
+
+[color=#e06666][size=6][b]- Settings -[/b][/size][/color]
+
+One tab in the Redscript Configuration Framework panel.
+
+[b]Mute radio when...[/b]
+Twelve switches, all on by default. Each is a situation in which the game silences the radio: a scene, a phone call, a club, fast travel and so on. On, a RadioXL station goes quiet there exactly as a vanilla station does. Off, a RadioXL station keeps playing through it. The game's own stations are never affected either way.
+
+Combat and police heat have no switch. The game ducks and stops every station in those, RadioXL stations included.
+
+
+[color=#e06666][size=6][b]- A station is not showing up -[/b][/size][/color]
+
+Install RedLogger and read r6\logs\mods\RadioXL.log after a launch. Every manifest fault is reported as [i]YourMod/station.json:<line>: what is wrong[/i], and a station with a fault is skipped whole. A station with no line in the log at all was not found: check the folder path above.
+
+If a station appears but sorts oddly against another one, check the frequency at the front of displayName: two stations on the same number have no defined order between them.
+
+
+[color=#e06666][size=6][b]- Known Limits -[/b][/size][/color]
+
+[list]
+[*]Tuning in for the first time after loading a save starts the track from its beginning. From then on, tuning away and back resumes where it left off.[/*]
+[*]A named DJ does not speak on a custom station. The game's announcements are wired to its own stations.[/*]
+[*]Up to 127 stations.[/*]
+[*]RadioXL replaces the game's station cycling, so it cannot be installed beside RadioExt or RadioXL 0.1.0.[/*]
+[/list]
+
+
+[color=#e06666][size=6][b]- Credits -[/b][/size][/color]
+
+DigitalVixen, for AudioXL, for RadioXL 0.1.0 and for the name.
+RED4ext by WopsS. Codeware and TweakXL by psiberx.
+RadioExt, for getting there first and showing that people want their own stations.

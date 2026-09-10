@@ -1,26 +1,28 @@
-# Native Radio Framework
+# RadioXL
 
 A custom radio station for Cyberpunk 2077 that is a **real engine station**, not a mod-authored music
 player. The engine's station roster is a fixed 14-slot array compiled into the binary. RadioExt
-ships FMOD and RadioXL recreates the radio in script, and both reach only the receivers they wrap.
-This framework extends that array instead, so a custom station plays on the Radioport, the
+ships FMOD and RadioXL 0.1.0 recreated the radio in script, and both reach only the receivers they
+wrap. This framework extends that array instead, so a custom station plays on the Radioport, the
 vehicle radio and world device radios through the game's own radio system, with nothing wrapped
 around them.
 
-**Status: in development. Not a Nexus release.** Two stations play on every receiver with their own
-names and icons; what is still open is in the issues. The source
-is public so that what it measured about the engine can be reused, in
-[RadioXL](https://www.nexusmods.com/cyberpunk2077/mods/33488) or anywhere else. The
-[issues](https://github.com/spuddeh/cp2077-native-radio-framework/issues) list every open item and
-every pending investigation, with what has been measured on each.
+**This is RadioXL from 0.3.0 on.** DigitalVixen's RadioXL 0.1.0, the script player on the same
+[Nexus page](https://www.nexusmods.com/cyberpunk2077/mods/33488), is what it replaces; the name and
+the page carry over, the audio side stays DigitalVixen's in AudioXL, and a station written for
+0.1.0 is converted to the manifest below (its script still compiles and the log names it).
+
+**Status: in development.** Two stations play on every receiver with their own names and icons;
+what is still open is in the [issues](https://github.com/spuddeh/cp2077-radio-xl/issues), with what
+has been measured on each.
 
 ## What a station mod ships
 
 One manifest, its audio files, and at most an icon archive:
 
 ```text
-red4ext/plugins/NativeRadioFramework/stations/<YourMod>/station.json
-red4ext/plugins/NativeRadioFramework/stations/<YourMod>/audio/*.mp3
+red4ext/plugins/RadioXL/stations/<YourMod>/station.json
+red4ext/plugins/RadioXL/stations/<YourMod>/audio/*.mp3
 archive/pc/mod/<YourMod>.archive          (optional - the station icon)
 ```
 
@@ -40,7 +42,7 @@ archive/pc/mod/<YourMod>.archive          (optional - the station icon)
 
 No durations, event names, Wwise ids, indices, TweakDB records, yaml or redscript. The framework
 derives or reads all of it. The full field reference is
-[stations/README.md](red4ext/plugins/NativeRadioFramework/stations/README.md), which ships with the
+[stations/README.md](red4ext/plugins/RadioXL/stations/README.md), which ships with the
 framework so the `stations/` folder survives packaging.
 
 ## Requirements
@@ -48,11 +50,22 @@ framework so the `stations/` folder survives packaging.
 - [RED4ext](https://www.nexusmods.com/cyberpunk2077/mods/2380)
 - [redscript](https://www.nexusmods.com/cyberpunk2077/mods/1511)
 - [Codeware](https://www.nexusmods.com/cyberpunk2077/mods/7780) - resource callbacks and localization
-- [AudioXL](https://www.nexusmods.com/cyberpunk2077/mods/33442) - plays the audio files
+- [AudioXL](https://www.nexusmods.com/cyberpunk2077/mods/33442) 0.3.0 or later - plays the audio
+  files, streams long tracks from disk, and carries the per-row start offset a resume needs
 - [TweakXL](https://www.nexusmods.com/cyberpunk2077/mods/4197) - the station's records for the dial
 
-[RedLogger](https://www.nexusmods.com/cyberpunk2077/mods/31920) is optional. With it installed the
-framework writes what it registered to `r6/logs/mods/`; without it the logging compiles away.
+Optional: [Redscript Configuration Framework](https://www.nexusmods.com/cyberpunk2077/mods/30726)
+shows the settings panel; without it the defaults apply.
+[RedLogger](https://www.nexusmods.com/cyberpunk2077/mods/31920): with it installed the framework
+writes what it registered to `r6/logs/mods/`; without it the logging compiles away.
+
+## Settings
+
+**Mute radio when...** - twelve switches, all on by default, one per situation in which the game
+silences the pocket radio (a scene, a phone call, a club, fast travel and so on). On, a custom
+station goes quiet there as a vanilla station does. Off, a custom station keeps playing through it.
+The game's own stations are never affected. Combat and police heat have no switch: they are Wwise
+mix states on the radio buses and reach every station on the game's radio route alike.
 
 ## How it works
 
@@ -85,10 +98,10 @@ worse than an unpatched one. Both bounds are 8-bit immediates, so 127 stations i
 A station manifest is read by a strict JSON parser and checked field by field. Every fault is logged
 with the file and the line, and a manifest with one is skipped whole rather than half-loaded.
 
-The plugin exposes the manifest to redscript through registered natives (`NRF_Station*`). It does
+The plugin exposes the manifest to redscript through registered natives (`RadioXL_Station*`). It does
 not touch audio, TweakDB or UI.
 
-### `NativeRadioFramework.reds` - assembly, as the resources load
+### `RadioXL.reds` - assembly, as the resources load
 
 Three of the game's own resources are patched **while they load**, because the engine builds its
 station set once, at boot, and anything added afterwards is never constructed:
@@ -122,7 +135,7 @@ SDK at `../../../_source/RED4ext.SDK/include`; point `target_include_directories
 ```powershell
 cmake -S plugin -B plugin\build -G "Visual Studio 17 2022" -A x64
 cmake --build plugin\build --config Release
-Copy-Item plugin\build\Release\NativeRadioFramework.dll red4ext\plugins\NativeRadioFramework\
+Copy-Item plugin\build\Release\RadioXL.dll red4ext\plugins\RadioXL\
 ```
 
 The SDK's exports are version-qualified (`RED4ext::v1::PluginInfo`, `RED4EXT_V1_SEMVER`).
@@ -151,12 +164,12 @@ plugin/src/Json.hpp          a strict JSON reader, every fault by line and colum
 plugin/src/Manifest.hpp      the manifest checks, every fault by file and line
 plugin/src/Duration.hpp      a track's length from its file headers
 plugin/tests/                the manifest reader's tests, run by ctest
-r6/scripts/NativeRadioFramework/
-  NativeRadioFramework.reds  the three resource patches
+r6/scripts/RadioXL/
+  RadioXL.reds  the three resource patches
   Audio.reds                 the AudioXL bridge
   Dial.reds                  TweakDB records and the script-side dial
-red4ext/plugins/NativeRadioFramework/
-  NativeRadioFramework.dll   the built plugin
+red4ext/plugins/RadioXL/
+  RadioXL.dll   the built plugin
   stations/README.md         the manifest reference, ships with the framework
 ```
 

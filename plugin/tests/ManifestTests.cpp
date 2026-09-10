@@ -1,11 +1,11 @@
 // ======================================================================================
-// Mod Name: Native Radio Framework
+// Mod Name: RadioXL
 // Author: Spuddeh
 // Description: Tests for the JSON reader and the manifest checks - every fault names its line.
 // File Version: 0.2.0
 // ======================================================================================
 //
-// Built as NrfManifestTests by the plugin's CMake and run by ctest. Exit code is the failure count.
+// Built as RadioXLManifestTests by the plugin's CMake and run by ctest. Exit code is the failure count.
 
 #include "../src/Manifest.hpp"
 
@@ -30,12 +30,12 @@ void Check(bool aCondition, const char* aWhat, const std::string& aDetail = {})
 struct Read
 {
     bool ok = false;
-    nrf::Station station;
+    radioxl::Station station;
     std::vector<std::string> log;
 
     explicit Read(const std::string& aText)
     {
-        ok = nrf::ReadManifest(aText, "Mod/station.json", station, [this](const std::string& aLine) { log.push_back(aLine); });
+        ok = radioxl::ReadManifest(aText, "Mod/station.json", station, [this](const std::string& aLine) { log.push_back(aLine); });
     }
 
     bool Logged(const std::string& aPrefix) const
@@ -95,7 +95,7 @@ void TestGood()
     Check(r.station.icon == "tool_fm", "icon");
     Check(r.station.atlas == "toolfm\\gui\\tool_fm.inkatlas", "atlas keeps its backslashes", r.station.atlas);
     Check(r.station.speaker == "Stanley", "speaker");
-    Check(r.station.gain == nrf::kDefaultGain, "gain defaults");
+    Check(r.station.gain == radioxl::kDefaultGain, "gain defaults");
     Check(r.station.tracks.size() == 2, "two tracks");
     Check(r.station.tracks[1].title == "Tool - 10,000 Days (Wings Pt. 2)", "second title");
 }

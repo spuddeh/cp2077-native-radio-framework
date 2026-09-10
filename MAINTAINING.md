@@ -25,7 +25,7 @@ station and the second must wrap to the first vanilla one on the dial.
 
 ## 2. The routing bank's cited objects
 
-`red4ext/plugins/NativeRadioFramework/nrf_routing.bnk` is built by `tools/make_routing_bank.py` from
+`red4ext/plugins/RadioXL/radioxl_routing.bnk` is built by `tools/make_routing_bank.py` from
 the game's own banks. It **copies** the two Broadcast Sends, so those cannot be moved out from under
 it, but it still cites three objects in `mod.bnk` by id and clones three more:
 
@@ -46,7 +46,7 @@ script-side check still passes.
 failure rather than a silent one:
 
 ```
-python tools/make_routing_bank.py <mod.bnk> <radio.bnk> red4ext/plugins/NativeRadioFramework/nrf_routing.bnk
+python tools/make_routing_bank.py <mod.bnk> <radio.bnk> red4ext/plugins/RadioXL/radioxl_routing.bnk
 ```
 
 ## 3. The send trims, if the dial has been retuned
@@ -97,7 +97,7 @@ voice ends while that slot is still current, so a declared duration at or above 
 makes a track play twice. The margin is bounded on the other side by the free-running station clock,
 which a short slot advances slightly faster than one slot per post.
 
-**Check:** if tracks start doubling, or a track is skipped every few dozen plays, `NRFScheduleMargin`
+**Check:** if tracks start doubling, or a track is skipped every few dozen plays, `RadioXLScheduleMargin`
 is the number to move.
 
 ## 7. The vanilla frequencies

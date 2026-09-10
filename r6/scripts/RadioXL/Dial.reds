@@ -1,8 +1,8 @@
 // ======================================================================================
-// Mod Name: Native Radio Framework
+// Mod Name: RadioXL
 // Author: Spuddeh
 // Description: Puts custom stations on the radio dial, in the UI and in the cycling order.
-// File Version: 0.2.0
+// File Version: 0.3.0
 // Credits: RED4ext by WopsS.
 // ======================================================================================
 //
@@ -18,51 +18,61 @@
 // inside them, so wrapping cannot reach the modulus. It also means this framework is an alternative
 // to RadioExt and RadioXL rather than a companion - all three rewrite the same functions.
 
-module NativeRadioFramework
+module RadioXL
 
 @if(ModuleExists("TweakXL"))
 import TweakXL.*
 
-// The default icon for a station that names none, and it ships NOTHING: the game already has a
-// `no_station` glyph in the atlas its own dial uses, which is what a radio with nothing tuned in
-// shows. A station with no icon of its own gets that rather than a broken image.
+// The default icon for a station that names none: the RadioXL glyph, shipped in the framework's
+// own `archive/pc/mod/RadioXL.archive`, one 256x256 part. Nothing vanilla is replaced by it. The
+// vanilla station atlas is kept apart because a world device's logo widget is fixed to it and has
+// to be pointed back at it for a vanilla station.
 //
 // **A UIIcon record pointing at an atlas that does not exist fails silently** - the widget keeps
 // whatever it was showing, which reads as the previous station's logo.
-public class NRFIcons {
+public class RadioXLIcons {
   public final static func FallbackAtlas() -> String {
-    return "base\\gameplay\\gui\\common\\icons\\radiostations_icons.inkatlas";
+    return "radioxl\\gui\\radioxl_icons.inkatlas";
   }
 
   public final static func FallbackPart() -> String {
-    return "no_station";
+    return "radioxl";
+  }
+
+  public final static func VanillaAtlas() -> String {
+    return "base\\gameplay\\gui\\common\\icons\\radiostations_icons.inkatlas";
+  }
+
+  // The record a RadioXL 0.1.0 station yaml names as its icon. Kept so those files stay valid.
+  public final static func RecordName() -> String {
+    return "UIIcon.RadioXL";
   }
 }
 
-public class NRFDial {
+public class RadioXLDial {
   // The station's own enum value, or -1 for a vanilla one.
   public final static func Slot(station: Int32) -> Int32 {
     let custom: Int32 = station - 14;
-    return custom >= 0 && custom < NRF_StationCount() ? custom : -1;
+    return custom >= 0 && custom < RadioXL_StationCount() ? custom : -1;
   }
 
   public final static func Total() -> Int32 {
-    return 14 + NRF_StationCount();
+    return 14 + RadioXL_StationCount();
   }
 
   // Every record the framework creates is named after the station, so nothing has to be declared in
   // a mod's yaml and no two station mods can collide on a record id.
   public final static func RecordName(slot: Int32) -> String {
-    return "RadioStation.NRF_" + NameToString(NRF_StationName(slot));
+    return "RadioStation.RadioXL_" + NameToString(RadioXL_StationName(slot));
   }
 
   public final static func IconName(slot: Int32) -> String {
-    return "UIIcon.NRF_" + NameToString(NRF_StationName(slot));
+    return "UIIcon.RadioXL_" + NameToString(RadioXL_StationName(slot));
   }
 
   public final static func Record(station: Int32) -> TweakDBID {
-    let slot: Int32 = NRFDial.Slot(station);
-    return slot < 0 ? TDBID.None() : TDBID.Create(NRFDial.RecordName(slot));
+    let slot: Int32 = RadioXLDial.Slot(station);
+    return slot < 0 ? TDBID.None() : TDBID.Create(RadioXLDial.RecordName(slot));
   }
 }
 
@@ -79,9 +89,10 @@ public class NRFDial {
 // TweakXL extends TweakDB; anything written before that is discarded when TweakDB loads, which
 // leaves the station playing but absent from every list that reads a record.
 @if(ModuleExists("TweakXL"))
-public class NRFRecords extends ScriptableTweak {
+public class RadioXLRecords extends ScriptableTweak {
   protected cb func OnApply() -> Void {
-    let count: Int32 = NRF_StationCount();
+    this.BuildFrameworkIcon();
+    let count: Int32 = RadioXL_StationCount();
     let i: Int32 = 0;
     while i < count {
       this.Build(i);
@@ -89,7 +100,7 @@ public class NRFRecords extends ScriptableTweak {
     }
     if count > 0 {
       this.Retune();
-      NRFLog(s"built \(count) station record(s)");
+      RadioXLLog(s"built \(count) station record(s)");
     }
   }
 
@@ -98,13 +109,27 @@ public class NRFRecords extends ScriptableTweak {
   // say the new one, or the popup finds two records on one index: both light up, and selecting
   // either plays whichever station now holds that position. Vanilla order is untouched when no
   // custom station sits inside the dial; the number written is then the number already there.
+  // `UIIcon.RadioXL`, the framework's own glyph as a record: the fallback below points at the same
+  // atlas and part, and a station yaml written for RadioXL 0.1.0 names this record by id.
+  private func BuildFrameworkIcon() -> Void {
+    let name: String = RadioXLIcons.RecordName();
+    let id: TweakDBID = TDBID.Create(name);
+    if IsDefined(TweakDBInterface.GetUIIconRecord(id)) { return; }
+    TweakDBManager.CreateRecord(StringToName(name), n"gamedataUIIcon_Record");
+    TweakDBManager.SetFlat(TDBID.Create(name + ".atlasPartName"),
+                           ToVariant(StringToName(RadioXLIcons.FallbackPart())));
+    TweakDBManager.SetFlat(TDBID.Create(name + ".atlasResourcePath"),
+                           ToVariant(ResRef.FromName(StringToName(RadioXLIcons.FallbackAtlas()))));
+    TweakDBManager.UpdateRecord(id);
+  }
+
   private func Retune() -> Void {
     let names: array<String> = ["AggroIndie", "ElectroIndie", "HipHop", "AggroTechno", "Downtempo", "AttRock", "Pop",
                                 "Latino", "Metal", "MinimTech", "Jazz", "GrowlFM", "DarkStar", "Impulse"];
     let station: Int32 = 0;
     while station < 14 {
       let recordName: String = "RadioStation." + names[station];
-      let position: Int32 = NRF_DialPosition(station);
+      let position: Int32 = RadioXL_DialPosition(station);
       if position >= 0 {
         TweakDBManager.SetFlat(TDBID.Create(recordName + ".index"), ToVariant(position));
         TweakDBManager.UpdateRecord(TDBID.Create(recordName));
@@ -114,17 +139,17 @@ public class NRFRecords extends ScriptableTweak {
   }
 
   private func Build(slot: Int32) -> Void {
-    let iconName: String = NRFDial.IconName(slot);
+    let iconName: String = RadioXLDial.IconName(slot);
     let iconId: TweakDBID = TDBID.Create(iconName);
 
-    let part: String = NRF_StationIcon(slot);
-    let atlas: String = NRF_StationAtlas(slot);
+    let part: String = RadioXL_StationIcon(slot);
+    let atlas: String = RadioXL_StationAtlas(slot);
     if StrLen(part) == 0 {
-      part = NRFIcons.FallbackPart();
-      atlas = NRFIcons.FallbackAtlas();
+      part = RadioXLIcons.FallbackPart();
+      atlas = RadioXLIcons.FallbackAtlas();
     }
     if StrLen(atlas) == 0 {
-      atlas = NRFIcons.FallbackAtlas();
+      atlas = RadioXLIcons.FallbackAtlas();
     }
 
     // `atlasResourcePath` is a resource reference, and TweakXL refuses a value of another type
@@ -138,31 +163,31 @@ public class NRFRecords extends ScriptableTweak {
                                                 ToVariant(ResRef.FromName(StringToName(atlas))));
     TweakDBManager.UpdateRecord(iconId);
     if !setPart || !setAtlas {
-      NRFLog(s"\(iconName): part \(setPart) atlas \(setAtlas) - the icon record is incomplete");
+      RadioXLLog(s"\(iconName): part \(setPart) atlas \(setAtlas) - the icon record is incomplete");
     }
 
     // The display name is plain text. The engine's name table holds the station's localization KEY
     // and the popup compares the two resolved strings, so both sides have to land on the same text.
-    let recordName: String = NRFDial.RecordName(slot);
+    let recordName: String = RadioXLDial.RecordName(slot);
     let recordId: TweakDBID = TDBID.Create(recordName);
     let madeStation: Bool = TweakDBManager.CreateRecord(StringToName(recordName), n"gamedataRadioStation_Record");
     TweakDBManager.SetFlat(TDBID.Create(recordName + ".displayName"),
-                           ToVariant(NRF_StationDisplayName(slot)));
+                           ToVariant(RadioXL_StationDisplayName(slot)));
     TweakDBManager.SetFlat(TDBID.Create(recordName + ".icon"), ToVariant(iconId));
-    let position: Int32 = NRF_DialPosition(14 + slot);
+    let position: Int32 = RadioXL_DialPosition(14 + slot);
     TweakDBManager.SetFlat(TDBID.Create(recordName + ".index"), ToVariant(position));
     TweakDBManager.UpdateRecord(recordId);
 
-    NRFLog(s"\(recordName): record \(madeStation), icon \(madeIcon) (\(part) in \(atlas)), dial position \(position)");
+    RadioXLLog(s"\(recordName): record \(madeStation), icon \(madeIcon) (\(part) in \(atlas)), dial position \(position)");
   }
 }
 
 // Without TweakXL there are no records, so a custom station plays but never reaches the dial.
 @if(!ModuleExists("TweakXL"))
-public class NRFRecordsMissing extends ScriptableService {
+public class RadioXLRecordsMissing extends ScriptableService {
   private cb func OnLoad() {
-    if NRF_StationCount() > 0 {
-      NRFLog("TweakXL is absent - stations play but cannot appear on the dial");
+    if RadioXL_StationCount() > 0 {
+      RadioXLLog("TweakXL is absent - stations play but cannot appear on the dial");
     }
   }
 }
@@ -171,15 +196,15 @@ public class NRFRecordsMissing extends ScriptableService {
 
 @wrapMethod(RadioStationDataProvider)
 public final static func GetStationsCount() -> Int32 {
-  return wrappedMethod() + NRF_StationCount();
+  return wrappedMethod() + RadioXL_StationCount();
 }
 
 // --- name and channel ------------------------------------------------------------------------------
 
 @wrapMethod(RadioStationDataProvider)
 public final static func GetStationName(radioStationType: ERadioStationList) -> CName {
-  let slot: Int32 = NRFDial.Slot(EnumInt(radioStationType));
-  return slot >= 0 ? NRF_StationName(slot) : wrappedMethod(radioStationType);
+  let slot: Int32 = RadioXLDial.Slot(EnumInt(radioStationType));
+  return slot >= 0 ? RadioXL_StationName(slot) : wrappedMethod(radioStationType);
 }
 
 // A channel name is a localization key, the same shape vanilla returns. A world device resolves it
@@ -187,8 +212,8 @@ public final static func GetStationName(radioStationType: ERadioStationList) -> 
 // keys are.
 @wrapMethod(RadioStationDataProvider)
 public final static func GetChannelName(radioStationType: ERadioStationList) -> String {
-  let slot: Int32 = NRFDial.Slot(EnumInt(radioStationType));
-  return slot >= 0 ? NameToString(NRF_StationKey(slot)) : wrappedMethod(radioStationType);
+  let slot: Int32 = RadioXLDial.Slot(EnumInt(radioStationType));
+  return slot >= 0 ? NameToString(RadioXL_StationKey(slot)) : wrappedMethod(radioStationType);
 }
 
 // --- dial order ---------------------------------------------------------------------------------
@@ -199,13 +224,13 @@ public final static func GetChannelName(radioStationType: ERadioStationList) -> 
 
 @wrapMethod(RadioStationDataProvider)
 public final static func GetRadioStationUIIndex(index: Int32) -> Int32 {
-  let position: Int32 = NRF_DialPosition(index);
+  let position: Int32 = RadioXL_DialPosition(index);
   return position >= 0 ? position : wrappedMethod(index);
 }
 
 @wrapMethod(RadioStationDataProvider)
 public final static func GetRadioStationByUIIndex(index: Int32) -> ERadioStationList {
-  let station: Int32 = NRF_DialStation(index);
+  let station: Int32 = RadioXL_DialStation(index);
   return station >= 0 ? IntEnum<ERadioStationList>(station) : wrappedMethod(index);
 }
 
@@ -219,7 +244,7 @@ public final static func GetRadioStationByUIIndex(index: Int32) -> ERadioStation
 
 @replaceMethod(RadioStationDataProvider)
 public final static func GetNextStationTo(currentIndex: Int32) -> ERadioStationList {
-  let total: Int32 = NRFDial.Total();
+  let total: Int32 = RadioXLDial.Total();
   let current: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(currentIndex);
   let skip: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(EnumInt(ERadioStationList.MINIMAL_TECHNO));
   current = current == skip - 1 ? skip : current;
@@ -228,7 +253,7 @@ public final static func GetNextStationTo(currentIndex: Int32) -> ERadioStationL
 
 @replaceMethod(RadioStationDataProvider)
 public final static func GetPreviousStationTo(currentIndex: Int32) -> ERadioStationList {
-  let total: Int32 = NRFDial.Total();
+  let total: Int32 = RadioXLDial.Total();
   let current: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(currentIndex);
   let skip: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(EnumInt(ERadioStationList.MINIMAL_TECHNO));
   current = current == skip + 1 ? skip : current;
@@ -240,7 +265,7 @@ public final static func GetNextStationPocketRadio(currentIndex: Int32) -> ERadi
   if currentIndex == -1 {
     return RadioStationDataProvider.GetRadioStationByUIIndex(0);
   }
-  let total: Int32 = NRFDial.Total();
+  let total: Int32 = RadioXLDial.Total();
   let current: Int32 = RadioStationDataProvider.GetRadioStationUIIndex(currentIndex);
   return RadioStationDataProvider.GetRadioStationByUIIndex((current + 1) % total);
 }
@@ -255,12 +280,12 @@ public final static func GetNextStationPocketRadio(currentIndex: Int32) -> ERadi
 public final static func GetRadioStations(player: ref<GameObject>) -> array<ref<IScriptable>> {
   let list: array<ref<IScriptable>> = wrappedMethod(player);
 
-  let total: Int32 = NRFDial.Total();
+  let total: Int32 = RadioXLDial.Total();
   let position: Int32 = 0;
   while position < total {
-    let slot: Int32 = NRFDial.Slot(NRF_DialStation(position));
+    let slot: Int32 = RadioXLDial.Slot(RadioXL_DialStation(position));
     if slot >= 0 {
-      let record = TweakDBInterface.GetRadioStationRecord(TDBID.Create(NRFDial.RecordName(slot)));
+      let record = TweakDBInterface.GetRadioStationRecord(TDBID.Create(RadioXLDial.RecordName(slot)));
       if IsDefined(record) {
         let data = new RadioListItemData();
         data.m_record = record;
@@ -287,14 +312,14 @@ public final static func GetRadioStations(player: ref<GameObject>) -> array<ref<
 @wrapMethod(RadioInkGameController)
 private final func SetupStationLogo() -> Void {
   let station: Int32 = EnumInt(this.GetOwner().GetDevicePS().GetActiveRadioStation());
-  if NRFDial.Slot(station) < 0 {
+  if RadioXLDial.Slot(station) < 0 {
     inkImageRef.SetAtlasResource(this.m_stationLogoWidget,
-                                 ResRef.FromName(StringToName(NRFIcons.FallbackAtlas())));
+                                 ResRef.FromName(StringToName(RadioXLIcons.VanillaAtlas())));
     wrappedMethod();
     return;
   }
 
-  let record = TweakDBInterface.GetRadioStationRecord(NRFDial.Record(station));
+  let record = TweakDBInterface.GetRadioStationRecord(RadioXLDial.Record(station));
   let icon = IsDefined(record) ? record.Icon() : null;
   if !IsDefined(icon) {
     wrappedMethod();
@@ -302,6 +327,6 @@ private final func SetupStationLogo() -> Void {
   }
   inkImageRef.SetAtlasResource(this.m_stationLogoWidget, icon.AtlasResourcePath());
   if !inkImageRef.SetTexturePart(this.m_stationLogoWidget, icon.AtlasPartName()) {
-    NRFLog(s"device logo: part \(icon.AtlasPartName()) is not in the widget's atlas yet");
+    RadioXLLog(s"device logo: part \(icon.AtlasPartName()) is not in the widget's atlas yet");
   }
 }

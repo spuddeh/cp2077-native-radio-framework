@@ -18,8 +18,8 @@ vanish and the vehicle popup's selection match nothing.
 `GetLocalizedTextByKey(receiverStationName)` to mark the playing station. Both sides must resolve to
 the same text.
 
-The framework mints one key per station (`Gameplay-Devices-Radio-NRF-<name>`) and one per title
-(`Gameplay-Devices-Radio_tracks-NRF-<name>-NN`), puts the station key in the name table and the
+The framework mints one key per station (`Gameplay-Devices-Radio-RadioXL-<name>`) and one per title
+(`Gameplay-Devices-Radio_tracks-RadioXL-<name>-NN`), puts the station key in the name table and the
 title key in the track row, and registers the text against them. A manifest never sees a key.
 
 ## A key resolves by string only inside the game's three namespaces
@@ -40,7 +40,7 @@ and a key outside those namespaces is hashed as written.** The string-side looku
 `inkText.SetText`, `SetLocalizedTextString`) uppercases what it is asked for, so a key outside the
 three namespaces never matches, while `GetLocalizedTextByKey(CName)` goes by the CName hash and does
 not care. So a title, looked up by hash, resolves where a station name looked up by string echoes
-its key, and an ArchiveXL key beginning `Gameplay-` resolves from the console where `NRF-Station-...`
+its key, and an ArchiveXL key beginning `Gameplay-` resolves from the console where `RadioXL-Station-...`
 does not.
 
 Because the walk runs after `LoadTexts` returns, rows added by an after-hook (ArchiveXL, Codeware) and

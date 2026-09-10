@@ -1,8 +1,8 @@
 // ======================================================================================
-// Mod Name: Native Radio Framework
+// Mod Name: RadioXL
 // Author: Spuddeh
 // Description: The AudioXL bridge - the one place this framework talks about sound.
-// File Version: 0.2.0
+// File Version: 0.3.0
 // Credits: AudioXL by DigitalVixen.
 // ======================================================================================
 //
@@ -13,7 +13,7 @@
 // Without AudioXL every call here answers "nothing registered", so a station with file-backed
 // tracks reports no playable tracks and is skipped. The rest of the framework still loads.
 
-module NativeRadioFramework
+module RadioXL
 
 @if(ModuleExists("AudioXL"))
 import AudioXL.*
@@ -22,7 +22,7 @@ import AudioXL.*
 // a 2D sound on a mixer: nothing owns it, so the radio system cannot stop it, a car cannot take it
 // over from the Radioport, and it is audible at a world device whether or not that device plays.
 // A station is a voice on the radio's own emitter, never a sound played alongside it.
-public class NRFAudio {
+public class RadioXLAudio {
 
   @if(ModuleExists("AudioXL"))
   public final static func Register(event: CName, file: String, type: CName) -> Bool {
@@ -36,7 +36,7 @@ public class NRFAudio {
   }
 
   // **A custom sound is played by posting its TYPE's event, and a type is whatever a loaded bank
-  // defines.** This framework's own bank defines `nrf_radio`, a clone of the game's `mod_sfx_radio`
+  // defines.** This framework's own bank defines `radioxl_radio`, a clone of the game's `mod_sfx_radio`
   // that cites a vanilla station's pair of Broadcast Send objects instead of that type's own, which
   // are trimmed above every station on the dial. Loading it is what makes the type postable.
   //
@@ -96,6 +96,41 @@ public class NRFAudio {
   @if(!ModuleExists("AudioXL"))
   public final static func WwiseId(event: CName) -> Uint32 {
     return 0u;
+  }
+
+  // Seconds into the voice now playing this row, whoever posted it, and 0 when none is.
+  @if(ModuleExists("AudioXL"))
+  public final static func Position(event: CName) -> Float {
+    return AudioXLNative.Position(event);
+  }
+
+  @if(!ModuleExists("AudioXL"))
+  public final static func Position(event: CName) -> Float {
+    return 0.0;
+  }
+
+  @if(ModuleExists("AudioXL"))
+  public final static func IsPlaying(event: CName) -> Bool {
+    return AudioXLNative.IsPlaying(event);
+  }
+
+  @if(!ModuleExists("AudioXL"))
+  public final static func IsPlaying(event: CName) -> Bool {
+    return false;
+  }
+
+  // Where the NEXT voice on this row starts, in seconds. One voice consumes it and it is cleared,
+  // so it has to be set again after every post; 0 clears it. This is how a station resumes: the
+  // engine posts a track from its start on this path, so the offset is handed to AudioXL before
+  // the post rather than read from the engine at it. Needs AudioXL 0.3.0.
+  @if(ModuleExists("AudioXL"))
+  public final static func PlayFrom(event: CName, seconds: Float) -> Bool {
+    return AudioXLNative.PlayFrom(event, seconds);
+  }
+
+  @if(!ModuleExists("AudioXL"))
+  public final static func PlayFrom(event: CName, seconds: Float) -> Bool {
+    return false;
   }
 
   @if(ModuleExists("AudioXL"))

@@ -1,5 +1,5 @@
 // ======================================================================================
-// Mod Name: Native Radio Framework
+// Mod Name: RadioXL
 // Author: Spuddeh
 // Description: The playing length of an audio file, read from its headers.
 // File Version: 0.2.0
@@ -27,7 +27,7 @@
 #include <string>
 #include <vector>
 
-namespace nrf
+namespace radioxl
 {
 namespace detail
 {
@@ -504,4 +504,4 @@ inline float AudioDuration(const std::filesystem::path& aPath)
     return 0.0f;
 }
 
-} // namespace nrf
+} // namespace radioxl

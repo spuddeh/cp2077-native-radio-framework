@@ -159,7 +159,7 @@ verified block, so it cannot drift; each custom station is then inserted before 
 whose frequency is above its own, using the fourteen vanilla frequencies the plugin carries
 (`kVanillaFrequency`) and the number at the front of its display name. A custom station with no
 number at the front sits after every station that has one, in slot order. The same two tables are
-handed to the script-side receivers through `NRF_DialPosition` and `NRF_DialStation`, so a car, a
+handed to the script-side receivers through `RadioXL_DialPosition` and `RadioXL_DialStation`, so a car, a
 world device and the pocket radio step through one dial.
 
 ## Exactly three sites divide by fourteen

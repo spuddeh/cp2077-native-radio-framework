@@ -1,23 +1,23 @@
 // ======================================================================================
-// Mod Name: Native Radio Framework
+// Mod Name: RadioXL
 // Author: Spuddeh
 // Description: Builds each declared station out of the engine's own radio systems.
-// File Version: 0.2.0
+// File Version: 0.3.0
 // Credits: RED4ext by WopsS. AudioXL by DigitalVixen.
 // ======================================================================================
 
-module NativeRadioFramework
+module RadioXL
 
 @if(ModuleExists("RedLogger"))
 import RedLogger.*
 
 @if(ModuleExists("RedLogger"))
-public func NRFLog(msg: String) -> Void {
-  RedLog.Append("NativeRadioFramework", msg);
+public func RadioXLLog(msg: String) -> Void {
+  RedLog.Append("RadioXL", msg);
 }
 
 @if(!ModuleExists("RedLogger"))
-public func NRFLog(msg: String) -> Void {}
+public func RadioXLLog(msg: String) -> Void {}
 
 // **A declared duration must sit BELOW the decoded length, and an exact one does not.** The engine
 // posts a slot's track again when the voice ends while that slot is still current, so a duration at
@@ -34,7 +34,7 @@ public func NRFLog(msg: String) -> Void {}
 // advances the clock a little further than one slot per post, and the excess accumulates until a
 // slot is passed over and its track goes unplayed. Half a second is 33,000 times the float step and
 // reaches that point about once in 450 tracks.
-public func NRFScheduleMargin() -> Float {
+public func RadioXLScheduleMargin() -> Float {
   return 0.5;
 }
 
@@ -46,32 +46,32 @@ public func NRFScheduleMargin() -> Float {
 //
 // It MULTIPLIES a station's own gain rather than replacing it, so a manifest that asks for a level
 // gets the same relative result whichever type carries the sound.
-public func NRFFallbackTrim() -> Float {
+public func RadioXLFallbackTrim() -> Float {
   return 0.56;
 }
 
 // Supplied by the plugin, which reads the station manifests. The list is declared once, in the
 // manifest, and read from here - never restated in script.
-public native func NRF_StationCount() -> Int32;
-public native func NRF_DialPosition(index: Int32) -> Int32;
-public native func NRF_DialStation(index: Int32) -> Int32;
-public native func NRF_StationName(index: Int32) -> CName;
-public native func NRF_StationKey(index: Int32) -> CName;
-public native func NRF_StationDisplayName(index: Int32) -> String;
-public native func NRF_StationIcon(index: Int32) -> String;
-public native func NRF_StationAtlas(index: Int32) -> String;
-public native func NRF_StationSpeaker(index: Int32) -> String;
-public native func NRF_StationGain(index: Int32) -> Float;
-public native func NRF_StationTrackCount(index: Int32) -> Int32;
-public native func NRF_StationTrack(index: Int32, track: Int32) -> CName;
-public native func NRF_StationTrackKey(index: Int32, track: Int32) -> CName;
-public native func NRF_StationTrackFile(index: Int32, track: Int32) -> String;
-public native func NRF_StationTrackTitle(index: Int32, track: Int32) -> String;
-public native func NRF_StationTrackDuration(index: Int32, track: Int32) -> Float;
-public native func NRF_StationKeyHash(index: Int32) -> Uint64;
-public native func NRF_StationTrackKeyHash(index: Int32, track: Int32) -> Uint64;
-public native func NRF_StationKeyHash64(index: Int32) -> Uint64;
-public native func NRF_StationTrackKeyHash64(index: Int32, track: Int32) -> Uint64;
+public native func RadioXL_StationCount() -> Int32;
+public native func RadioXL_DialPosition(index: Int32) -> Int32;
+public native func RadioXL_DialStation(index: Int32) -> Int32;
+public native func RadioXL_StationName(index: Int32) -> CName;
+public native func RadioXL_StationKey(index: Int32) -> CName;
+public native func RadioXL_StationDisplayName(index: Int32) -> String;
+public native func RadioXL_StationIcon(index: Int32) -> String;
+public native func RadioXL_StationAtlas(index: Int32) -> String;
+public native func RadioXL_StationSpeaker(index: Int32) -> String;
+public native func RadioXL_StationGain(index: Int32) -> Float;
+public native func RadioXL_StationTrackCount(index: Int32) -> Int32;
+public native func RadioXL_StationTrack(index: Int32, track: Int32) -> CName;
+public native func RadioXL_StationTrackKey(index: Int32, track: Int32) -> CName;
+public native func RadioXL_StationTrackFile(index: Int32, track: Int32) -> String;
+public native func RadioXL_StationTrackTitle(index: Int32, track: Int32) -> String;
+public native func RadioXL_StationTrackDuration(index: Int32, track: Int32) -> Float;
+public native func RadioXL_StationKeyHash(index: Int32) -> Uint64;
+public native func RadioXL_StationTrackKeyHash(index: Int32, track: Int32) -> Uint64;
+public native func RadioXL_StationKeyHash64(index: Int32) -> Uint64;
+public native func RadioXL_StationTrackKeyHash64(index: Int32, track: Int32) -> Uint64;
 
 // A station is assembled out of the systems the game already has, in this order:
 //
@@ -94,7 +94,7 @@ public native func NRF_StationTrackKeyHash64(index: Int32, track: Int32) -> Uint
 // patches holds one, and so does every audioRadioTrack. A station's key is minted here and the text
 // registered against it, so the UI resolves a custom station exactly as it resolves a vanilla one.
 // Raw text in those slots is what makes a label vanish and the station selector match nothing.
-public func NRFSpeaker(name: String) -> audioRadioSpeakerType {
+public func RadioXLSpeaker(name: String) -> audioRadioSpeakerType {
   switch name {
     case "MaximumMike": return audioRadioSpeakerType.MaximumMike;
     case "PoliceDispatch": return audioRadioSpeakerType.PoliceDispatch;
@@ -106,8 +106,8 @@ public func NRFSpeaker(name: String) -> audioRadioSpeakerType {
 }
 
 // AudioXL takes a registration only once the engine's audio system exists. This carries the retry.
-public class NRFPoll extends DelayCallback {
-  public let service: wref<NativeRadioFramework>;
+public class RadioXLPoll extends DelayCallback {
+  public let service: wref<RadioXLService>;
 
   public func Call() -> Void {
     if IsDefined(this.service) {
@@ -117,8 +117,8 @@ public class NRFPoll extends DelayCallback {
 }
 
 // A row AudioXL queued gets its level trim on a later pass. This carries that retry.
-public class NRFGainPoll extends DelayCallback {
-  public let service: wref<NativeRadioFramework>;
+public class RadioXLGainPoll extends DelayCallback {
+  public let service: wref<RadioXLService>;
 
   public func Call() -> Void {
     if IsDefined(this.service) {
@@ -127,7 +127,7 @@ public class NRFGainPoll extends DelayCallback {
   }
 }
 
-public class NativeRadioFramework extends ScriptableService {
+public class RadioXLService extends ScriptableService {
 
   private let m_tokens: array<ref<ResourceToken>>;
   private let m_audioDone: Bool;
@@ -137,7 +137,7 @@ public class NativeRadioFramework extends ScriptableService {
   private let m_polls: Int32;
   private let m_gainPending: Bool;
   private let m_gainPolls: Int32;
-  private let m_clock: ref<NRFStationClock>;
+  private let m_clock: ref<RadioXLStationClock>;
   private let m_ownType: Bool;
 
   private cb func OnLoad() {
@@ -170,14 +170,14 @@ public class NativeRadioFramework extends ScriptableService {
       this.ApplyGains();
     }
     if !IsDefined(this.m_clock) {
-      this.m_clock = new NRFStationClock();
+      this.m_clock = new RadioXLStationClock();
     }
     this.m_clock.Start();
   }
 
   // Where each station is in its own schedule. Null until a session has been ready once, because
   // the watch runs on the DelaySystem.
-  public func Clock() -> ref<NRFStationClock> {
+  public func Clock() -> ref<RadioXLStationClock> {
     return this.m_clock;
   }
 
@@ -194,7 +194,7 @@ public class NativeRadioFramework extends ScriptableService {
   // plugin's, read from the file's headers, because it is needed before AudioXL can decode anything.
 
   // The framework's own bank, and the type it defines. **The type decides where a station's sound
-  // is sent**: `nrf_radio` carries a vanilla station's send trims, while the game's `mod_sfx_radio`
+  // is sent**: `radioxl_radio` carries a vanilla station's send trims, while the game's `mod_sfx_radio`
   // is trimmed 3 to 7 dB above every station on the dial. The fallback is not a degraded mode - it
   // is what every station sounded like before the bank existed - so a bank that fails to load costs
   // level accuracy and nothing else.
@@ -202,13 +202,13 @@ public class NativeRadioFramework extends ScriptableService {
   // nothing about why, and the codes differ: 1 is a load, 69 a bank already loaded, and the rest are
   // distinct failures worth telling apart.
   private func AudioType() -> CName {
-    let path: String = "red4ext/plugins/NativeRadioFramework/nrf_routing.bnk";
-    let result: Int32 = NRFAudio.LoadBankResult(path);
+    let path: String = "red4ext/plugins/RadioXL/radioxl_routing.bnk";
+    let result: Int32 = RadioXLAudio.LoadBankResult(path);
     this.m_ownType = result == 1 || result == 69;
-    let chosen: String = this.m_ownType ? "nrf_radio" : "mod_sfx_radio (the game's)";
-    NRFLog(s"routing bank load returned \(result), type is \(chosen)");
+    let chosen: String = this.m_ownType ? "radioxl_radio" : "mod_sfx_radio (the game's)";
+    RadioXLLog(s"routing bank load returned \(result), type is \(chosen)");
     if this.m_ownType {
-      return n"nrf_radio";
+      return n"radioxl_radio";
     }
     return n"mod_sfx_radio";
   }
@@ -216,9 +216,9 @@ public class NativeRadioFramework extends ScriptableService {
   // What a track's samples are scaled by. 1.0 on this framework's own type, because the send carries
   // the level there; the fallback's trim on the game's type, which has no send to set.
   private func Gain(station: Int32) -> Float {
-    let gain: Float = NRF_StationGain(station);
+    let gain: Float = RadioXL_StationGain(station);
     if this.m_ownType { return gain; }
-    return gain * NRFFallbackTrim();
+    return gain * RadioXLFallbackTrim();
   }
 
   private func RegisterAudio() -> Void {
@@ -228,33 +228,33 @@ public class NativeRadioFramework extends ScriptableService {
     let type: CName = this.AudioType();
     let registered: Int32 = 0;
     let station: Int32 = 0;
-    let count: Int32 = NRF_StationCount();
+    let count: Int32 = RadioXL_StationCount();
     while station < count {
-      let tracks: Int32 = NRF_StationTrackCount(station);
+      let tracks: Int32 = RadioXL_StationTrackCount(station);
       let gain: Float = this.Gain(station);
       let t: Int32 = 0;
       while t < tracks {
-        let event: CName = NRF_StationTrack(station, t);
-        let file: String = NRF_StationTrackFile(station, t);
-        if IsNameValid(event) && StrLen(file) > 0 && !NRFAudio.Has(event) {
-          if NRFAudio.Register(event, file, type) {
+        let event: CName = RadioXL_StationTrack(station, t);
+        let file: String = RadioXL_StationTrackFile(station, t);
+        if IsNameValid(event) && StrLen(file) > 0 && !RadioXLAudio.Has(event) {
+          if RadioXLAudio.Register(event, file, type) {
             registered += 1;
-            if !NRFAudio.SetGain(event, gain) {
+            if !RadioXLAudio.SetGain(event, gain) {
               this.m_gainPending = true;
             }
           } else {
-            NRFLog(s"AudioXL refused \(event) - \(file)");
+            RadioXLLog(s"AudioXL refused \(event) - \(file)");
           }
         }
         t += 1;
       }
       station += 1;
     }
-    NRFLog(s"registered \(registered) track(s) with AudioXL");
+    RadioXLLog(s"registered \(registered) track(s) with AudioXL");
     // **A registration returning true says the row exists, not that anything can play it.** If the
     // type's event is absent the engine posts into nothing, which sounds exactly like a broken file.
-    let probe: CName = NRF_StationTrack(0, 0);
-    NRFLog(s"probe \(probe): row \(NRFAudio.Has(probe)), wwiseId \(NRFAudio.WwiseId(probe)), decoded \(NRFAudio.Duration(probe)) s");
+    let probe: CName = RadioXL_StationTrack(0, 0);
+    RadioXLLog(s"probe \(probe): row \(RadioXLAudio.Has(probe)), wwiseId \(RadioXLAudio.WwiseId(probe)), decoded \(RadioXLAudio.Duration(probe)) s");
     if this.m_gainPending {
       this.ApplyGains();
     }
@@ -265,14 +265,14 @@ public class NativeRadioFramework extends ScriptableService {
   public func ApplyGains() -> Void {
     let failed: Int32 = 0;
     let station: Int32 = 0;
-    let count: Int32 = NRF_StationCount();
+    let count: Int32 = RadioXL_StationCount();
     while station < count {
-      let tracks: Int32 = NRF_StationTrackCount(station);
+      let tracks: Int32 = RadioXL_StationTrackCount(station);
       let gain: Float = this.Gain(station);
       let t: Int32 = 0;
       while t < tracks {
-        let event: CName = NRF_StationTrack(station, t);
-        if IsNameValid(event) && !NRFAudio.SetGain(event, gain) {
+        let event: CName = RadioXL_StationTrack(station, t);
+        if IsNameValid(event) && !RadioXLAudio.SetGain(event, gain) {
           failed += 1;
         }
         t += 1;
@@ -281,12 +281,12 @@ public class NativeRadioFramework extends ScriptableService {
     }
     if failed == 0 {
       this.m_gainPending = false;
-      NRFLog("level trim applied to every track");
+      RadioXLLog("level trim applied to every track");
       return;
     }
     this.m_gainPolls += 1;
     if this.m_gainPolls > 20 {
-      NRFLog(s"\(failed) track(s) never got a row in AudioXL, so their level trim was not applied");
+      RadioXLLog(s"\(failed) track(s) never got a row in AudioXL, so their level trim was not applied");
       this.m_gainPending = false;
       return;
     }
@@ -294,10 +294,10 @@ public class NativeRadioFramework extends ScriptableService {
     // before any row exists and before a session has a DelaySystem. Session/Ready calls back in.
     let delay = GameInstance.GetDelaySystem(GetGameInstance());
     if !IsDefined(delay) {
-      NRFLog(s"\(failed) track(s) have no row yet - level trim deferred to the session");
+      RadioXLLog(s"\(failed) track(s) have no row yet - level trim deferred to the session");
       return;
     }
-    let again = new NRFGainPoll();
+    let again = new RadioXLGainPoll();
     again.service = this;
     delay.DelayCallback(again, 0.5);
   }
@@ -308,14 +308,14 @@ public class NativeRadioFramework extends ScriptableService {
   public func Poll() -> Void {
     if this.m_audioDone { return; }
 
-    if NRFAudio.Available() {
+    if RadioXLAudio.Available() {
       this.RegisterAudio();
       return;
     }
 
     this.m_polls += 1;
     if this.m_polls > 120 {
-      NRFLog("AudioXL never became available - no track has audio, so no station can sound");
+      RadioXLLog("AudioXL never became available - no track has audio, so no station can sound");
       return;
     }
 
@@ -323,10 +323,10 @@ public class NativeRadioFramework extends ScriptableService {
     // to schedule here is a wait rather than a dead end.
     let delay = GameInstance.GetDelaySystem(GetGameInstance());
     if !IsDefined(delay) {
-      NRFLog(s"no DelaySystem yet - waiting for the session (poll \(this.m_polls))");
+      RadioXLLog(s"no DelaySystem yet - waiting for the session (poll \(this.m_polls))");
       return;
     }
-    let again = new NRFPoll();
+    let again = new RadioXLPoll();
     again.service = this;
     delay.DelayCallback(again, 0.5);
   }
@@ -357,42 +357,42 @@ public class NativeRadioFramework extends ScriptableService {
     // and reports nothing - the registration succeeds, the bank loads, and every station is silent.
     // AudioXL registers its own six `axl_*` types here for the same reason.
     let typeRow: audioAudioEventMetadataArrayElement;
-    typeRow.redId = n"nrf_radio";
-    typeRow.wwiseId = NRFAudio.WwiseId(n"nrf_radio");
+    typeRow.redId = n"radioxl_radio";
+    typeRow.wwiseId = RadioXLAudio.WwiseId(n"radioxl_radio");
     typeRow.isLooping = false;
     typeRow.maxAttenuation = 0.0;
     typeRow.minDuration = 0.0;
     typeRow.maxDuration = 0.0;
     if typeRow.wwiseId == 0u {
-      NRFLog("the nrf_radio type has no Wwise id - the routing bank cannot be posted, so every station falls to the game's type");
+      RadioXLLog("the radioxl_radio type has no Wwise id - the routing bank cannot be posted, so every station falls to the game's type");
     } else {
-      if !this.HasEvent(events, n"nrf_radio") {
+      if !this.HasEvent(events, n"radioxl_radio") {
         ArrayPush(events.events, typeRow);
-        NRFLog(s"registered the nrf_radio type in the audio event table, wwiseId \(typeRow.wwiseId)");
+        RadioXLLog(s"registered the radioxl_radio type in the audio event table, wwiseId \(typeRow.wwiseId)");
       }
     }
 
     let added: Int32 = 0;
     let total: Float = 0.0;
     let station: Int32 = 0;
-    let count: Int32 = NRF_StationCount();
+    let count: Int32 = RadioXL_StationCount();
     while station < count {
-      let tracks: Int32 = NRF_StationTrackCount(station);
+      let tracks: Int32 = RadioXL_StationTrackCount(station);
       let t: Int32 = 0;
       while t < tracks {
-        let name: CName = NRF_StationTrack(station, t);
-        let duration: Float = NRF_StationTrackDuration(station, t);
+        let name: CName = RadioXL_StationTrack(station, t);
+        let duration: Float = RadioXL_StationTrackDuration(station, t);
         if duration <= 0.0 {
-          NRFLog(s"\(name) has no length - not added to the event table");
+          RadioXLLog(s"\(name) has no length - not added to the event table");
         } else {
           if !this.HasEvent(events, name) {
             let row: audioAudioEventMetadataArrayElement;
             row.redId = name;
-            row.wwiseId = NRFAudio.WwiseId(name);
+            row.wwiseId = RadioXLAudio.WwiseId(name);
             row.isLooping = false;
             row.maxAttenuation = 0.0;
-            row.minDuration = duration - NRFScheduleMargin();
-            row.maxDuration = duration - NRFScheduleMargin();
+            row.minDuration = duration - RadioXLScheduleMargin();
+            row.maxDuration = duration - RadioXLScheduleMargin();
             ArrayPush(events.events, row);
             added += 1;
             total += duration;
@@ -402,7 +402,7 @@ public class NativeRadioFramework extends ScriptableService {
       }
       station += 1;
     }
-    NRFLog(s"registered \(added) event(s) in the audio event table as it loaded, \(Cast<Int32>(total)) s of audio");
+    RadioXLLog(s"registered \(added) event(s) in the audio event table as it loaded, \(Cast<Int32>(total)) s of audio");
   }
 
   private func HasEvent(events: ref<audioAudioEventArray>, name: CName) -> Bool {
@@ -430,9 +430,9 @@ public class NativeRadioFramework extends ScriptableService {
   private func Register(cooked: ref<audioCookedMetadataResource>) -> Void {
     if !IsDefined(cooked) || this.m_cookedDone { return; }
 
-    let count: Int32 = NRF_StationCount();
+    let count: Int32 = RadioXL_StationCount();
     if count <= 0 {
-      NRFLog("no stations registered - either none are installed, or the roster was not patched");
+      RadioXLLog("no stations registered - either none are installed, or the roster was not patched");
       return;
     }
     this.m_cookedDone = true;
@@ -446,7 +446,7 @@ public class NativeRadioFramework extends ScriptableService {
       if IsDefined(trackTable) { titles = trackTable; }
     }
     if !IsDefined(map) {
-      NRFLog("no station map in this metadata resource - nothing registered");
+      RadioXLLog("no station map in this metadata resource - nothing registered");
       return;
     }
 
@@ -460,11 +460,11 @@ public class NativeRadioFramework extends ScriptableService {
   private func RegisterStation(cooked: ref<audioCookedMetadataResource>,
                                map: ref<audioRadioStationMetadataMap>,
                                titles: ref<audioRadioTracksMetadata>, index: Int32) -> Void {
-    let name: CName = NRF_StationName(index);
+    let name: CName = RadioXL_StationName(index);
     if !IsNameValid(name) { return; }
 
     if IsDefined(this.Find(cooked, name)) {
-      NRFLog(s"\(name) is already defined - left alone");
+      RadioXLLog(s"\(name) is already defined - left alone");
       return;
     }
 
@@ -472,12 +472,12 @@ public class NativeRadioFramework extends ScriptableService {
     station.name = name;
     // The DJ, and `None` is the default - a station with no speaker plays. Vanilla names one on
     // every station, so a station mod that wants one asks for it by name in its manifest.
-    station.speaker = NRFSpeaker(NRF_StationSpeaker(index));
+    station.speaker = RadioXLSpeaker(RadioXL_StationSpeaker(index));
 
-    let tracks: Int32 = NRF_StationTrackCount(index);
+    let tracks: Int32 = RadioXL_StationTrackCount(index);
     let t: Int32 = 0;
     while t < tracks {
-      let event: CName = NRF_StationTrack(index, t);
+      let event: CName = RadioXL_StationTrack(index, t);
       if IsNameValid(event) {
         ArrayPush(station.tracks, event);
         this.AddTitle(titles, index, t, event);
@@ -486,7 +486,7 @@ public class NativeRadioFramework extends ScriptableService {
     }
 
     if ArraySize(station.tracks) == 0 {
-      NRFLog(s"\(name) lists no tracks - not registered");
+      RadioXLLog(s"\(name) lists no tracks - not registered");
       return;
     }
 
@@ -495,14 +495,14 @@ public class NativeRadioFramework extends ScriptableService {
       ArrayPush(map.radioStations, name);
     }
 
-    NRFLog(s"registered \(name) as the metadata loaded: \(ArraySize(station.tracks)) track(s), map now lists \(ArraySize(map.radioStations))");
+    RadioXLLog(s"registered \(name) as the metadata loaded: \(ArraySize(station.tracks)) track(s), map now lists \(ArraySize(map.radioStations))");
   }
 
   // The row the dashboard and the radio wheel read the song title from. `localizationKey` is a key,
   // and RegisterText is what makes it resolve.
   private func AddTitle(titles: ref<audioRadioTracksMetadata>, station: Int32, track: Int32,
                         event: CName) -> Void {
-    if !IsDefined(titles) || StrLen(NRF_StationTrackTitle(station, track)) == 0 { return; }
+    if !IsDefined(titles) || StrLen(RadioXL_StationTrackTitle(station, track)) == 0 { return; }
     let i: Int32 = 0;
     while i < ArraySize(titles.radioTracks) {
       if Equals(titles.radioTracks[i].trackEventName, event) { return; }
@@ -510,8 +510,8 @@ public class NativeRadioFramework extends ScriptableService {
     }
     let row: audioRadioTrack;
     row.trackEventName = event;
-    row.localizationKey = NRF_StationTrackKey(station, track);
-    row.primaryLocKey = NRF_StationTrackKeyHash(station, track);
+    row.localizationKey = RadioXL_StationTrackKey(station, track);
+    row.primaryLocKey = RadioXL_StationTrackKeyHash(station, track);
     row.isStreamingFriendly = true;
     ArrayPush(titles.radioTracks, row);
   }
@@ -547,22 +547,22 @@ public class NativeRadioFramework extends ScriptableService {
 
     let added: Int32 = 0;
     let station: Int32 = 0;
-    let count: Int32 = NRF_StationCount();
+    let count: Int32 = RadioXL_StationCount();
     while station < count {
-      added += this.AddText(screens, NRF_StationKey(station), NRF_StationKeyHash(station),
-                            NRF_StationKeyHash64(station), NRF_StationDisplayName(station));
-      let tracks: Int32 = NRF_StationTrackCount(station);
+      added += this.AddText(screens, RadioXL_StationKey(station), RadioXL_StationKeyHash(station),
+                            RadioXL_StationKeyHash64(station), RadioXL_StationDisplayName(station));
+      let tracks: Int32 = RadioXL_StationTrackCount(station);
       let t: Int32 = 0;
       while t < tracks {
-        added += this.AddText(screens, NRF_StationTrackKey(station, t),
-                              NRF_StationTrackKeyHash(station, t),
-                              NRF_StationTrackKeyHash64(station, t),
-                              NRF_StationTrackTitle(station, t));
+        added += this.AddText(screens, RadioXL_StationTrackKey(station, t),
+                              RadioXL_StationTrackKeyHash(station, t),
+                              RadioXL_StationTrackKeyHash64(station, t),
+                              RadioXL_StationTrackTitle(station, t));
         t += 1;
       }
       station += 1;
     }
-    NRFLog(s"registered \(added) string(s) in onscreens");
+    RadioXLLog(s"registered \(added) string(s) in onscreens");
   }
 
   // **The localization list is SORTED by primaryKey and searched with a binary search.** A row
