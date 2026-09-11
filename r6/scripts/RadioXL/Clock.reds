@@ -224,8 +224,8 @@ public class RadioXLStationClock extends IScriptable {
   // engine names no track" from "the tick chain died". Every tick for the first five, then once a
   // minute, and bounded.
   private func Report(now: Float) -> Void {
-    if this.m_reports >= 25 { return; }
-    if this.m_ticks > 5 && this.m_ticks % 60 != 0 { return; }
+    if this.m_reports >= 60 { return; }
+    if this.m_ticks > 5 && this.m_ticks % 15 != 0 { return; }
     this.m_reports += 1;
 
     let line: String = s"tick \(this.m_ticks) at \(now):";
@@ -238,10 +238,13 @@ public class RadioXLStationClock extends IScriptable {
       line += s" \(slot.station)=track \(this.TrackOf(slot.stationIndex, current)) \"\(GetLocalizedTextByKey(current))\"";
       i += 1;
     }
-    // Growl FM is the control. Its key belongs to no custom station, so only the title it resolves
-    // to is worth reading, and a vanilla song title there proves the lookup itself works.
+    // Two vanilla controls. Their keys belong to no custom station, so only the title each resolves
+    // to is worth reading: a vanilla song title proves the lookup works, and a title that changes
+    // while the station is not being listened to proves a tuned-then-left vanilla station advances.
     let control: CName = GetRadioStationCurrentTrackName(n"radio_station_12_growl_fm");
     line += s" | control growl_fm=\"\(GetLocalizedTextByKey(control))\"";
+    let pop: CName = GetRadioStationCurrentTrackName(n"radio_station_05_pop");
+    line += s" body_heat=\"\(GetLocalizedTextByKey(pop))\"";
     RadioXLLog(line);
   }
 
