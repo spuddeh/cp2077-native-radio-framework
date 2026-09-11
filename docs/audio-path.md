@@ -166,8 +166,8 @@ From its source, all `[M]`:
 4. **It seeks only where told.** `AudioFeed::Start` sets the voice position to the row's `start`
    (default 0). The engine keeps a per-slot position field; AudioXL writes it every buffer and never
    reads it. From AudioXL 0.3.0 `PlayFrom(name, seconds)` sets a one-shot start for the next voice
-   on a row and `Position(name)` reads the playing voice's position; that pair is how the framework
-   resumes (`Clock.reds`).
+   on a row and `Position(name)` reads the playing voice's position. `PlayFrom` is what the
+   framework's plugin arms with the engine's station clock (`plugin/src/Clock.hpp`).
 5. **A compressed track of 45 s or more streams from disk** from AudioXL 0.3.0; shorter ones, and any
    row with a loop, a start/end region or a rate, are decoded in full at registration. `stream: true`
    forces streaming. Before 0.3.0 every MP3, OGG and FLAC was resident PCM, eleven album tracks about

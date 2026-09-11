@@ -21,6 +21,7 @@
 #include <Windows.h>
 #include <RED4ext/RED4ext.hpp>
 
+#include "Clock.hpp"
 #include "Duration.hpp"
 #include "Manifest.hpp"
 
@@ -1205,6 +1206,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
 
         LoadManifests();
         PatchRoster();
+        radioxl::clock::Start(aSdk, aHandle, g_stations, &TrackEvent, &TrackKey);
 
         RED4ext::CRTTISystem::Get()->AddRegisterCallback(&RegisterNatives);
     }

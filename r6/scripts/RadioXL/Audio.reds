@@ -98,41 +98,6 @@ public class RadioXLAudio {
     return 0u;
   }
 
-  // Seconds into the voice now playing this row, whoever posted it, and 0 when none is.
-  @if(ModuleExists("AudioXL"))
-  public final static func Position(event: CName) -> Float {
-    return AudioXLNative.Position(event);
-  }
-
-  @if(!ModuleExists("AudioXL"))
-  public final static func Position(event: CName) -> Float {
-    return 0.0;
-  }
-
-  @if(ModuleExists("AudioXL"))
-  public final static func IsPlaying(event: CName) -> Bool {
-    return AudioXLNative.IsPlaying(event);
-  }
-
-  @if(!ModuleExists("AudioXL"))
-  public final static func IsPlaying(event: CName) -> Bool {
-    return false;
-  }
-
-  // Where the NEXT voice on this row starts, in seconds. One voice consumes it and it is cleared,
-  // so it has to be set again after every post; 0 clears it. This is how a station resumes: the
-  // engine posts a track from its start on this path, so the offset is handed to AudioXL before
-  // the post rather than read from the engine at it. Needs AudioXL 0.3.0.
-  @if(ModuleExists("AudioXL"))
-  public final static func PlayFrom(event: CName, seconds: Float) -> Bool {
-    return AudioXLNative.PlayFrom(event, seconds);
-  }
-
-  @if(!ModuleExists("AudioXL"))
-  public final static func PlayFrom(event: CName, seconds: Float) -> Bool {
-    return false;
-  }
-
   @if(ModuleExists("AudioXL"))
   public final static func Available() -> Bool {
     return AudioXLNative.Available();

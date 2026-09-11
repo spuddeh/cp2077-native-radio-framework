@@ -137,7 +137,6 @@ public class RadioXLService extends ScriptableService {
   private let m_polls: Int32;
   private let m_gainPending: Bool;
   private let m_gainPolls: Int32;
-  private let m_clock: ref<RadioXLStationClock>;
   private let m_ownType: Bool;
 
   private cb func OnLoad() {
@@ -169,16 +168,6 @@ public class RadioXLService extends ScriptableService {
     if this.m_gainPending {
       this.ApplyGains();
     }
-    if !IsDefined(this.m_clock) {
-      this.m_clock = new RadioXLStationClock();
-    }
-    this.m_clock.Start();
-  }
-
-  // Where each station is in its own schedule. Null until a session has been ready once, because
-  // the watch runs on the DelaySystem.
-  public func Clock() -> ref<RadioXLStationClock> {
-    return this.m_clock;
   }
 
   private func Watch(depot: ref<ResourceDepot>, path: ResRef, callback: CName) -> Void {
