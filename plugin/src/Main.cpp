@@ -1206,7 +1206,10 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
 
         LoadManifests();
         PatchRoster();
-        radioxl::clock::Start(aSdk, aHandle, g_stations, &TrackEvent, &TrackKey);
+        // The engine names a station's current track by the 32-bit hash its localization row is
+        // indexed by, so that is the key the clock matches on.
+        radioxl::clock::Start(aSdk, aHandle, g_stations, &TrackEvent,
+                              [](const Station& s, size_t i) { return static_cast<uint64_t>(Fnv1a32(TrackKey(s, i))); });
 
         RED4ext::CRTTISystem::Get()->AddRegisterCallback(&RegisterNatives);
     }

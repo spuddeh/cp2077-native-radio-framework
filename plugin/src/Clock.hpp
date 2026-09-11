@@ -59,7 +59,10 @@ struct Watched
 {
     std::string name;                 // the station CName
     uint64_t nameHash = 0;            // its CName hash, what the engine's object answers with
-    std::vector<uint64_t> trackKeys;  // each track's localization key as a CName hash
+    // **The engine names a track by the 32-bit FNV-1a of its localization key**, carried in a
+    // CName with the high half zero, never by the CName hash of the key's text. Measured: a
+    // station's current track came back as 0x0f78ca8c, the 32-bit hash of its key.
+    std::vector<uint64_t> trackKeys;
     std::vector<std::string> rows;    // each track's event row, what AudioXL knows it as
     std::vector<float> durations;     // each track's length in seconds
     int lastTrack = -1;               // the track last seen posted, for logging on change
@@ -318,7 +321,7 @@ inline void Start(const RED4ext::v1::Sdk* aSdk, RED4ext::v1::PluginHandle aHandl
         w.nameHash = RED4ext::CName(s.name.c_str()).hash;
         for (size_t i = 0; i < s.tracks.size(); ++i)
         {
-            w.trackKeys.push_back(RED4ext::CName(aKey(s, i).c_str()).hash);
+            w.trackKeys.push_back(aKey(s, i));
             w.rows.push_back(aEvent(s, i));
             w.durations.push_back(s.tracks[i].duration);
         }
