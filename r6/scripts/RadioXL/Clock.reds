@@ -165,6 +165,12 @@ public class RadioXLStationClock extends IScriptable {
   private func Follow(slot: ref<RadioXLSlot>) -> Void {
     if !IsNameValid(slot.row) { return; }
     let playing: Bool = RadioXLAudio.IsPlaying(slot.row);
+    // The row's voice each second, whether or not a receiver is tuned: a position that climbs
+    // while nobody listens is a voice rendering unheard, one that holds is a voice the renderer
+    // no longer serves but still counts. Bounded to the first fifteen minutes of a session.
+    if this.m_ticks <= 900 {
+      RadioXLLog(s"\(slot.station) track \(slot.index) live=\(playing) pos=\(RadioXLAudio.Position(slot.row)) pending=\(slot.pending)");
+    }
     if playing {
       let position: Float = RadioXLAudio.Position(slot.row);
       // A position behind the last one is a fresh voice on the row. What it started from, against
