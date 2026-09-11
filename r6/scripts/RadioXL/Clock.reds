@@ -238,13 +238,24 @@ public class RadioXLStationClock extends IScriptable {
       line += s" \(slot.station)=track \(this.TrackOf(slot.stationIndex, current)) \"\(GetLocalizedTextByKey(current))\"";
       i += 1;
     }
-    // Two vanilla controls. Their keys belong to no custom station, so only the title each resolves
-    // to is worth reading: a vanilla song title proves the lookup works, and a title that changes
-    // while the station is not being listened to proves a tuned-then-left vanilla station advances.
-    let control: CName = GetRadioStationCurrentTrackName(n"radio_station_12_growl_fm");
-    line += s" | control growl_fm=\"\(GetLocalizedTextByKey(control))\"";
-    let pop: CName = GetRadioStationCurrentTrackName(n"radio_station_05_pop");
-    line += s" body_heat=\"\(GetLocalizedTextByKey(pop))\"";
+    // The fourteen vanilla stations are the controls. Their keys belong to no custom station, so
+    // only the title each resolves to is worth reading: a vanilla song title proves the lookup
+    // works, and a title that changes while the station is not being listened to proves a
+    // tuned-then-left vanilla station advances.
+    let vanilla: array<CName> = [n"radio_station_01_att_rock", n"radio_station_02_aggro_ind",
+                                 n"radio_station_03_elec_ind", n"radio_station_04_hiphop",
+                                 n"radio_station_05_pop", n"radio_station_06_minim_techno",
+                                 n"radio_station_07_aggro_techno", n"radio_station_08_jazz",
+                                 n"radio_station_09_downtempo", n"radio_station_10_latino",
+                                 n"radio_station_11_metal", n"radio_station_12_growl_fm",
+                                 n"radio_station_13_dark_star", n"radio_station_14_impulse_fm"];
+    line += " |";
+    let v: Int32 = 0;
+    while v < ArraySize(vanilla) {
+      let key: CName = GetRadioStationCurrentTrackName(vanilla[v]);
+      line += s" \(vanilla[v])=\"\(GetLocalizedTextByKey(key))\"";
+      v += 1;
+    }
     RadioXLLog(line);
   }
 
