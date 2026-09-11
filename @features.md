@@ -9,10 +9,10 @@
   own glyph.
 - A station that names no icon shows the RadioXL glyph, shipped in the framework's archive; the
   record `UIIcon.RadioXL` exists for a RadioXL 0.1.0 station yaml that names it.
-- Resume: tuning away from a custom station and back continues the track where it left off, within
-  a second. The clock reads the playing voice's position from AudioXL each tick and hands it back as
-  the next voice's start offset (`PlayFrom`, AudioXL 0.3.0); a slot boundary and a new session
-  clear it.
+- Resume: tuning back to a custom station picks the song up where the station has got to, the
+  way a vanilla station does. The plugin reads the engine's own station clock four times a second
+  and arms the current track's row with it as the next voice's start (`PlayFrom`, AudioXL 0.3.0).
+  Nothing runs on a script timer, so a station picked from an open selector resumes too.
 - "Mute radio when..." - twelve switches in the Redscript Configuration Framework panel, one per
   `PocketRadioRestrictions` member, all on by default. Off lifts that restriction for a custom
   station only; a vanilla station selected while it is lifted gets it back. RCF is optional.
@@ -53,8 +53,9 @@
 ## Awaiting in-game verification
 
 - The Radioport level against a vanilla station, by capture rather than by ear.
-- Resume on tune-back (#1): the same song continues within a second of where it stopped, and the
-  track after it starts when it ends rather than the tail repeating.
+- Resume on tune-back (#1): the song picks up at the station clock, later than where it stopped by
+  the time spent away; picking the second of two stations from an open selector resumes as well;
+  the track after it starts when it ends rather than the tail repeating.
 - A station naming no icon shows the RadioXL glyph on the selector, the dashboard and a world device.
 - Each mute switch: off keeps a custom station playing through that situation; a vanilla station
   selected during it is silenced as before.

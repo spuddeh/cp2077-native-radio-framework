@@ -82,7 +82,7 @@ If a station appears but sorts oddly against another one, check the frequency at
 [color=#e06666][size=6][b]- Known Limits -[/b][/size][/color]
 
 [list]
-[*]Tuning in for the first time after loading a save starts the track from its beginning. From then on, tuning away and back resumes where it left off.[/*]
+[*]Tuning away from a station and back picks the song up where the station has got to, the way a vanilla station does.[/*]
 [*]A named DJ does not speak on a custom station. The game's announcements are wired to its own stations.[/*]
 [*]Up to 127 stations.[/*]
 [*]RadioXL replaces the game's station cycling, so it cannot be installed beside RadioExt or RadioXL 0.1.0.[/*]

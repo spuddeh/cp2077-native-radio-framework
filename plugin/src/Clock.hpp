@@ -2,7 +2,7 @@
 // Mod Name: RadioXL
 // Author: Spuddeh
 // Description: The engine's own station clock, handed to AudioXL as each track's start offset.
-// File Version: 0.4.0
+// File Version: 0.3.0
 // Credits: AudioXL by DigitalVixen.
 // ======================================================================================
 //

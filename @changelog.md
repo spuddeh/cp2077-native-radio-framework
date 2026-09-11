@@ -14,10 +14,15 @@
   `Position`, `IsPlaying` and `Pause`.
 
 ### Added
-- Resume on tune-back (#1). The engine posts a custom track from 0 and hands no offset, so
-  `Clock.reds` reads the playing voice's position from AudioXL every tick and writes it back to the
-  row as the next voice's start (`PlayFrom`). A slot boundary clears the row that ended; a new
-  session clears every pending start. Awaiting an in-game run.
+- Resume on tune-back (#1), from the engine's own station clock. The engine posts a custom track
+  from 0 and hands no offset; the station object's clock (`+0x14c`) counts seconds since its slot
+  began, on engine time, whether or not anyone listens. `plugin/src/Clock.hpp` reads it four times
+  a second from the plugin's game-state update, asks the engine which track the station is on
+  (`GetRadioStationCurrentTrackName`, matched by the track's localization key), and arms that row
+  through AudioXL's `PlayFrom` over RTTI. Replaces `Clock.reds`, a DelaySystem watch that wrote the
+  playing voice's position back each tick: the station selector on foot stops sim time while it is
+  open, the watch stopped with it, and the second station picked from an open selector started from
+  0 (measured 2026-09-12). Awaiting an in-game run.
 - "Mute radio when..." (`Settings.reds`, `Restrictions.reds`): twelve switches in the Redscript
   Configuration Framework panel, one per `PocketRadioRestrictions` member, all on by default. Off
   lifts that restriction for a custom station only, through a wrap of `PocketRadio.HandleRestriction`
