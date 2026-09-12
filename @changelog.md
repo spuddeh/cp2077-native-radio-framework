@@ -13,6 +13,12 @@
   removes the resident-PCM cost that made WAV the recommendation (#4), and adds `PlayFrom`,
   `Position`, `IsPlaying` and `Pause`.
 
+### Fixed
+- Toggling a vehicle radio off and on while on a custom station landed on a random vanilla one
+  (#27). The receiver's turn-on block treats a stored station at or past 14 as none chosen; the
+  bound is raised to the station total with the other three. The block has no RED4ext hash, so
+  the plugin follows the enable routine's own `jne` to it and verifies the bytes there.
+
 ### Added
 - Resume on tune-back (#1), from the engine's own station clock. The engine posts a custom track
   from 0 and hands no offset; the station object's clock (`+0x14c`) counts seconds since its slot
