@@ -2,7 +2,7 @@
 // Mod Name: RadioXL
 // Author: Spuddeh
 // Description: Extends the engine's radio station roster so custom stations are real stations.
-// File Version: 0.2.0
+// File Version: 0.3.0
 // Credits: RED4ext by WopsS. AudioXL by DigitalVixen for the plugin shape.
 // ======================================================================================
 //
@@ -68,8 +68,7 @@ constexpr size_t kVehicleCmpImm    = 0x60;
 // its own. The block is reached through the routine's own `jne` at +0x42, so it is found by reading
 // that displacement rather than by address. At +0x29 into the block the stored station is compared
 // with 14: a station at or past the bound is taken as "none chosen yet" and the receiver picks one
-// of the vehicle's own at random, which is why a custom station came back as Ritual FM once and
-// Vexelstrom once. The bound is raised to the station total like the other three.
+// of the vehicle's own at random. The bound is raised to the station total like the other three.
 constexpr uint32_t kHashReceiverEnable = 1795889442;  // 0xa32d90, the receiver's enable/disable
 constexpr size_t kEnableTest    = 0x40;  // 84 D2            test dl, dl
 constexpr size_t kEnableJne     = 0x42;  // 0F 85 rel32      jne turn-on block
@@ -1303,7 +1302,7 @@ RED4EXT_C_EXPORT void RED4EXT_CALL Query(RED4ext::v1::PluginInfo* aInfo)
 {
     aInfo->name = L"RadioXL";
     aInfo->author = L"Spuddeh";
-    aInfo->version = RED4EXT_V1_SEMVER(0, 2, 0);
+    aInfo->version = RED4EXT_V1_SEMVER(0, 3, 0);
     aInfo->runtime = RED4EXT_V1_RUNTIME_VERSION_LATEST;
     aInfo->sdk = RED4EXT_V1_SDK_VERSION_CURRENT;
 }

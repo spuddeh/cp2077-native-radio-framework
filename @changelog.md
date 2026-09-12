@@ -42,7 +42,7 @@
   through AudioXL's `PlayFrom` over RTTI. Replaces `Clock.reds`, a DelaySystem watch that wrote the
   playing voice's position back each tick: the station selector on foot stops sim time while it is
   open, the watch stopped with it, and the second station picked from an open selector started from
-  0 (measured 2026-09-12). Awaiting an in-game run.
+  0. Verified in game: a tune-back lands at the station clock and swaps from an open selector resume.
 - "Mute radio when..." (`Settings.reds`, `Restrictions.reds`): twelve switches in the Redscript
   Configuration Framework panel, one per `PocketRadioRestrictions` member, all on by default. Off
   lifts that restriction for a custom station only, through a wrap of `PocketRadio.HandleRestriction`
