@@ -44,7 +44,10 @@ public class RadioXLRestrictions extends ScriptableSystem {
   // The value the pocket radio is told, for the station it has selected.
   // **A switch is a situation, and a situation raises more than one restriction.** Measured:
   //   a holo call     raises BlockFastTravel and QuestContentLock beside PhoneCall
-  //   a vehicle scene raises PhoneNoCalling and UpperBodyState beside VehicleScene
+  //   a vehicle scene raises PhoneNoCalling and UpperBodyState beside VehicleScene, and the skip
+  //                   prompt flickers through the ride
+  //   a scene         raises UpperBodyState beside SceneTier, and the skip prompt flickers through
+  //                   every line; entering a club is a scene at the door and nothing more
   // Lifting the situation's own restriction alone leaves the radio silenced by its companions, so
   // while a situation is up and its switch is off, its companions are lifted with it. A companion
   // raised on its own, by a quest, still mutes as its own switch says. Situations not yet measured
@@ -54,7 +57,12 @@ public class RadioXLRestrictions extends ScriptableSystem {
       return [EnumInt(PocketRadioRestrictions.BlockFastTravel), EnumInt(PocketRadioRestrictions.QuestContentLock)];
     }
     if situation == EnumInt(PocketRadioRestrictions.VehicleScene) {
-      return [EnumInt(PocketRadioRestrictions.PhoneNoCalling), EnumInt(PocketRadioRestrictions.UpperBodyState)];
+      return [EnumInt(PocketRadioRestrictions.PhoneNoCalling), EnumInt(PocketRadioRestrictions.UpperBodyState),
+              EnumInt(PocketRadioRestrictions.FastForwardHintActive), EnumInt(PocketRadioRestrictions.FastForward)];
+    }
+    if situation == EnumInt(PocketRadioRestrictions.SceneTier) {
+      return [EnumInt(PocketRadioRestrictions.UpperBodyState),
+              EnumInt(PocketRadioRestrictions.FastForwardHintActive), EnumInt(PocketRadioRestrictions.FastForward)];
     }
     let none: array<Int32>;
     return none;
@@ -64,7 +72,8 @@ public class RadioXLRestrictions extends ScriptableSystem {
     let cfg = RadioXLConfig.Get();
     let state = RadioXLRestrictions.Get();
     if !IsDefined(cfg) || !IsDefined(state) { return false; }
-    let situations: array<Int32> = [EnumInt(PocketRadioRestrictions.PhoneCall), EnumInt(PocketRadioRestrictions.VehicleScene)];
+    let situations: array<Int32> = [EnumInt(PocketRadioRestrictions.PhoneCall), EnumInt(PocketRadioRestrictions.VehicleScene),
+                                    EnumInt(PocketRadioRestrictions.SceneTier)];
     let i: Int32 = 0;
     while i < ArraySize(situations) {
       let s: Int32 = situations[i];
