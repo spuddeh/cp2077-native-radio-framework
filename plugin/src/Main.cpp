@@ -33,6 +33,7 @@
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <random>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -376,6 +377,18 @@ void LoadManifests()
             Log(station.source + ": station '" + station.name +
                 "' lists no usable tracks - each needs a \"file\" with a readable length - skipped");
             continue;
+        }
+
+        // **Shuffle happens here and nowhere later.** Every track's event name, key and row are
+        // derived from its position, so the order is fixed once the manifest is read and the
+        // engine's schedule runs over it as written. A new order every session is the whole
+        // feature; within a session the order is stable.
+        if (station.shuffle && station.tracks.size() > 1)
+        {
+            std::mt19937 rng{std::random_device{}()};
+            std::shuffle(station.tracks.begin(), station.tracks.end(), rng);
+            Log(station.source + ": '" + station.name + "' shuffled for this session - first track '" +
+                station.tracks.front().file + "'");
         }
 
         bool duplicate = false;

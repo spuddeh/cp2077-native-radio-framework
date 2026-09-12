@@ -57,6 +57,7 @@ holding a [b]station.json[/b] and the audio files it names.
 [*][b]icon[/b] and [b]atlas[/b] are optional: an inkatlas part and the atlas holding it, shipped in an archive of your own. Leave both out and the station shows the RadioXL glyph.[/*]
 [*][b]tracks[/b] play in order, on the station's own clock, the way a vanilla station plays. WAV, MP3, OGG and FLAC.[/*]
 [*][b]speaker[/b] is optional and names a DJ: Stanley, MaximumMike, Ash, Kurtz or PoliceDispatch.[/*]
+[*][b]shuffle[/b] is optional. true plays the tracks in a new random order each time the game starts; the default is the order they are written in.[/*]
 [/list]
 
 No durations, event names, indices, records, yaml or script. RadioXL reads each track's length from the file and builds everything else at load. A manifest with a mistake in it is skipped, and the log names the file and the line.

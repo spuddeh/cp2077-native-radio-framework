@@ -46,6 +46,7 @@ struct Station
     std::string atlas;         // the inkatlas resource holding that part, or empty for the framework's
     std::string speaker;       // audioRadioSpeakerType - the station's DJ
     float gain = kDefaultGain; // level trim applied to every track's samples, 0..1; see RadioXL_StationGain
+    bool shuffle = false;      // play the tracks in a new random order each session, decided at load
     std::vector<Track> tracks;
     std::string source;        // which manifest it came from, for logging
     std::string folder;        // the manifest's own directory, which track files are relative to
@@ -148,7 +149,7 @@ inline bool ReadManifest(std::string_view aText, const std::string& aWhere, Stat
         }
     };
 
-    unknownKeys(root, {"name", "displayName", "icon", "atlas", "speaker", "gain", "tracks"}, "manifest");
+    unknownKeys(root, {"name", "displayName", "icon", "atlas", "speaker", "gain", "shuffle", "tracks"}, "manifest");
 
     if (const JsonValue* name = expect(root, "name", JsonValue::Kind::String, true))
     {
@@ -204,6 +205,11 @@ inline bool ReadManifest(std::string_view aText, const std::string& aWhere, Stat
             at(gain->line, "\"gain\" is 0 to 1 - clamped");
         }
         aOut.gain = std::clamp(static_cast<float>(gain->number), 0.0f, 1.0f);
+    }
+
+    if (const JsonValue* shuffle = expect(root, "shuffle", JsonValue::Kind::Bool, false))
+    {
+        aOut.shuffle = shuffle->boolean;
     }
 
     if (const JsonValue* tracks = expect(root, "tracks", JsonValue::Kind::Array, true))
