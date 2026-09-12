@@ -20,6 +20,20 @@
   the plugin follows the enable routine's own `jne` to it and verifies the bytes there.
 
 ### Added
+- Shuffle (#22): a four-way setting (Off, Every station, Vanilla only, Custom only), read by the
+  plugin from RCF's own file at boot because RCF restores settings after the metadata has loaded;
+  the script reorders vanilla `tracks` arrays as the base and EP1 metadata load, the plugin
+  reorders custom stations as manifests are read. A manifest's `shuffle` is three-valued: `true`
+  always, `false` never, absent follows the setting. Measured: a session-time reorder is ignored,
+  so it takes effect on the next launch. DJ song nodes post by name and are unaffected.
+- The mute switches apply to every station on the Radioport, vanilla included, and a switch is a
+  situation: a lifted switch also lifts the companion restrictions its situation raises. Measured
+  sets: a holo call brings `BlockFastTravel` and `QuestContentLock`; a vehicle scene brings
+  `PhoneNoCalling`, `UpperBodyState` and the skip prompt; a scene brings `UpperBodyState` and the
+  skip prompt. A wrap on `OnStatusEffectApplied` records every tag an effect carries before the
+  game walks them, so the first companion already sees its situation and the radio never drops
+  for the unlock delay. Every hint names its trigger in the game's code and its default; tab text
+  is a `Label` row, since a `Tip` attaches to the last row built.
 - Resume on tune-back (#1), from the engine's own station clock. The engine posts a custom track
   from 0 and hands no offset; the station object's clock (`+0x14c`) counts seconds since its slot
   began, on engine time, whether or not anyone listens. `plugin/src/Clock.hpp` reads it four times

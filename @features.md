@@ -16,8 +16,12 @@
   in game: a tune-back after a minute away landed on the next song as the schedule said, and swaps
   from an open selector resumed every time.
 - "Mute radio when..." - twelve switches in the Redscript Configuration Framework panel, one per
-  `PocketRadioRestrictions` member, all on by default. Off lifts that restriction for a custom
-  station only; a vanilla station selected while it is lifted gets it back. RCF is optional.
+  `PocketRadioRestrictions` member, all on by default, applying to every station on the Radioport.
+  A switch is a situation: off also lifts the companions its situation raises (a call, a vehicle
+  scene and a scene are measured). Verified in game: a call and a Delamain ride play through with
+  their switch off. RCF is optional.
+- Shuffle: a four-way setting (Off, Every station, Vanilla only, Custom only), next launch, and a
+  manifest's `shuffle: true` / `false` for one station. Verified in game.
 - `RadioXLAPI.RegisterStation(name)`: a RadioXL 0.1.0 station's script compiles and is logged; the
   station is not created (#10).
 - Each track's length is read from its file at load, so a station runs on the world clock like a
@@ -57,8 +61,6 @@
 
 - The Radioport level against a vanilla station, by capture rather than by ear.
 - A station naming no icon shows the RadioXL glyph on the selector, the dashboard and a world device.
-- Each mute switch: off keeps a custom station playing through that situation; a vanilla station
-  selected during it is silenced as before.
 
 ## Planned
 
