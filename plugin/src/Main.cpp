@@ -62,6 +62,23 @@ constexpr size_t kIndexLeaDisp   = 0x0F;
 constexpr size_t kVehicleCmpOpcode = 0x5E;  // 83 FF 0E   cmp edi, 14
 constexpr size_t kVehicleCmpImm    = 0x60;
 
+// **A fourth bound, in the receiver's turn-on path.** Switching a vehicle radio back on runs the
+// receiver's enable routine (0xa32d90), whose turn-on branch lives in a cold block with no hash of
+// its own. The block is reached through the routine's own `jne` at +0x42, so it is found by reading
+// that displacement rather than by address. At +0x29 into the block the stored station is compared
+// with 14: a station at or past the bound is taken as "none chosen yet" and the receiver picks one
+// of the vehicle's own at random, which is why a custom station came back as Ritual FM once and
+// Vexelstrom once. The bound is raised to the station total like the other three.
+constexpr uint32_t kHashReceiverEnable = 1795889442;  // 0xa32d90, the receiver's enable/disable
+constexpr size_t kEnableTest    = 0x40;  // 84 D2            test dl, dl
+constexpr size_t kEnableJne     = 0x42;  // 0F 85 rel32      jne turn-on block
+constexpr size_t kEnableJneNext = 0x48;  // the rel32 is measured from here
+constexpr size_t kOnCmpOpcode   = 0x29;  // 83 7F 0C 0E      cmp dword [rdi+0xc], 14
+constexpr size_t kOnCmpImm      = 0x2C;
+constexpr uint8_t kTestDlJne[] = {0x84, 0xD2, 0x0F, 0x85};
+constexpr uint8_t kOnBlockStart[] = {0x4C, 0x8B, 0x01, 0x49, 0x8B, 0xC8};  // mov r8,[rcx]; mov rcx,r8
+constexpr uint8_t kCmpRdi0c[] = {0x83, 0x7F, 0x0C};
+
 // The vehicle receiver's NEXT-station step, `+0x68` to `+0x92` of the same function. It takes the
 // current index through a dial-order table (a switch on 0..13), adds one, reduces modulo 14 with a
 // magic-number division, maps back through the inverse table (another switch on 0..13) and drops
@@ -602,13 +619,24 @@ void PatchRoster()
     const auto nameTable = reinterpret_cast<uint64_t*>(ResolveByHash(kHashNameTable));
     const auto nameReader = reinterpret_cast<uint8_t*>(ResolveByHash(kHashNameReader));
     const auto nameReader2 = reinterpret_cast<uint8_t*>(ResolveByHash(kHashNameReader2));
+    const auto receiverEnable = reinterpret_cast<uint8_t*>(ResolveByHash(kHashReceiverEnable));
 
     if (!roster || !resolve || !indexToName || !vehicleSet || !nameTable || !nameReader ||
-        !nameReader2)
+        !nameReader2 || !receiverEnable)
     {
         Log("address resolution failed - is RED4ext's address database present for this build?");
         return;
     }
+
+    // The turn-on block is wherever the enable routine's own jump says it is.
+    if (std::memcmp(receiverEnable + kEnableTest, kTestDlJne, sizeof(kTestDlJne)) != 0)
+    {
+        Log("byte check FAILED at receiverEnable: test dl, dl; jne - nothing patched");
+        return;
+    }
+    int32_t onDisp = 0;
+    std::memcpy(&onDisp, receiverEnable + kEnableJne + 2, sizeof(onDisp));
+    const auto receiverOn = receiverEnable + kEnableJneNext + onDisp;
 
     // Both tables are filled by startup initialisers. Copying zeroes would erase every station.
     for (int i = 0; i < kVanillaCount; ++i)
@@ -659,6 +687,8 @@ void PatchRoster()
         {nameReader2 + kName2Sub, kSubEcxEax, sizeof(kSubEcxEax), "nameReader2: sub ecx, eax"},
         {nameReader2 + kName2Cmp, kCmpEcx, sizeof(kCmpEcx), "nameReader2: cmp ecx, imm8"},
         {nameReader2 + kName2Mov, kMovR14Rcx, sizeof(kMovR14Rcx), "nameReader2: mov rbx, [r14+rcx*8+disp32]"},
+        {receiverOn, kOnBlockStart, sizeof(kOnBlockStart), "receiverOn: mov r8, [rcx]; mov rcx, r8"},
+        {receiverOn + kOnCmpOpcode, kCmpRdi0c, sizeof(kCmpRdi0c), "receiverOn: cmp dword [rdi+0xc], imm8"},
     };
     for (const auto& c : checks)
     {
@@ -670,9 +700,9 @@ void PatchRoster()
     }
     if (resolve[kResolveCmpImm] != kVanillaCount || indexToName[kIndexCmpImm] != kVanillaCount - 1 ||
         vehicleSet[kVehicleCmpImm] != kVanillaCount || nameReader[kNameCmpImm] != kVanillaCount - 1 ||
-        nameReader2[kName2CmpImm] != kVanillaCount - 1)
+        nameReader2[kName2CmpImm] != kVanillaCount - 1 || receiverOn[kOnCmpImm] != kVanillaCount)
     {
-        Log("bounds are not the expected 14/13/14/13/13 - already patched, or a different build. Abandoned.");
+        Log("bounds are not the expected 14/13/14/13/13/14 - already patched, or a different build. Abandoned.");
         return;
     }
 
@@ -800,6 +830,7 @@ void PatchRoster()
                     WriteBytes(indexToName + kIndexCmpImm, &boundLast, 1) &&
                     WriteBytes(nameReader + kNameCmpImm, &boundLast, 1) &&
                     WriteBytes(vehicleSet + kVehicleCmpImm, &boundTotal, 1) &&
+                    WriteBytes(receiverOn + kOnCmpImm, &boundTotal, 1) &&
                     WriteBytes(vehicleSet + kVehicleStepFrom, detour, sizeof(detour));
 
     if (!ok)
@@ -822,7 +853,8 @@ void PatchRoster()
     }
     Log("roster patched to " + std::to_string(total) + " stations at " +
         Hex(reinterpret_cast<uintptr_t>(table)) + ", vehicle next-station step detoured to " +
-        Hex(reinterpret_cast<uintptr_t>(stub)) + ", dial order " + dial);
+        Hex(reinterpret_cast<uintptr_t>(stub)) + ", receiver turn-on bound at " +
+        Hex(reinterpret_cast<uintptr_t>(receiverOn + kOnCmpImm)) + ", dial order " + dial);
 }
 
 // --- the script side of the manifest -----------------------------------------------------------
