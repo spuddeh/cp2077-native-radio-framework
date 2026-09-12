@@ -120,7 +120,7 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
     b.Toggle("muteInDaClub", "You are inside a club");
     b.Tip("Default: on. Clubs play their own music.");
     b.Toggle("muteVehicleScene", "A vehicle scene is playing");
-    b.Tip("Default: on. A scripted scene inside a vehicle, such as a ride where a character talks to you.");
+    b.Tip("Default: on. A scripted scene inside a vehicle, such as a Delamain ride or a drive where a character talks to you. Off also lifts the hands-empty and calling locks a vehicle scene raises with it, for the length of the scene.");
     b.Toggle("muteVehicleBlockPocketRadio", "The vehicle blocks the Radioport");
     b.Tip("Default: on. A vehicle set to switch the Radioport off during its ride.");
     b.Toggle("muteUpperBodyState", "Your hands are forced empty");
