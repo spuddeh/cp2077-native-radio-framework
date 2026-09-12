@@ -53,7 +53,7 @@ public func RadioXLFallbackTrim() -> Float {
 // Supplied by the plugin, which reads the station manifests. The list is declared once, in the
 // manifest, and read from here - never restated in script.
 public native func RadioXL_StationCount() -> Int32;
-public native func RadioXL_ShuffleAll() -> Bool;
+public native func RadioXL_ShuffleVanilla() -> Bool;
 public native func RadioXL_DialPosition(index: Int32) -> Int32;
 public native func RadioXL_DialStation(index: Int32) -> Int32;
 public native func RadioXL_StationName(index: Int32) -> CName;
@@ -431,10 +431,11 @@ public class RadioXLService extends ScriptableService {
     }
     this.m_cookedDone = true;
 
-    // With "Shuffle every station" on, the fourteen's lists are reordered here, in the same
-    // moment the engine reads them. The custom stations are shuffled by the plugin as their
-    // manifests are read, so nothing below touches an order twice.
-    if RadioXL_ShuffleAll() {
+    // With the Shuffle setting on "Every station" or "The game's own stations only", the
+    // fourteen's lists are reordered here, in the same moment the engine reads them. The custom
+    // stations are shuffled by the plugin as their manifests are read, so nothing below touches
+    // an order twice.
+    if RadioXL_ShuffleVanilla() {
       this.ShuffleVanilla(cooked);
     }
 
@@ -481,14 +482,14 @@ public class RadioXLService extends ScriptableService {
   }
 
   private cb func OnEp1Metadata(event: ref<ResourceEvent>) {
-    if RadioXL_ShuffleAll() && !this.m_ep1Done {
+    if RadioXL_ShuffleVanilla() && !this.m_ep1Done {
       this.m_ep1Done = true;
       this.ShuffleVanilla(event.GetResource() as audioCookedMetadataResource);
     }
   }
 
   private cb func OnEp1Ready(token: ref<ResourceToken>) {
-    if RadioXL_ShuffleAll() && !this.m_ep1Done {
+    if RadioXL_ShuffleVanilla() && !this.m_ep1Done {
       this.m_ep1Done = true;
       this.ShuffleVanilla(token.GetResource() as audioCookedMetadataResource);
     }

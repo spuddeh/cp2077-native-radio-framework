@@ -57,7 +57,7 @@ holding a [b]station.json[/b] and the audio files it names.
 [*][b]icon[/b] and [b]atlas[/b] are optional: an inkatlas part and the atlas holding it, shipped in an archive of your own. Leave both out and the station shows the RadioXL glyph.[/*]
 [*][b]tracks[/b] play in order, on the station's own clock, the way a vanilla station plays. WAV, MP3, OGG and FLAC.[/*]
 [*][b]speaker[/b] is optional and names a DJ: Stanley, MaximumMike, Ash, Kurtz or PoliceDispatch.[/*]
-[*][b]shuffle[/b] is optional. true plays the tracks in a new random order each time the game starts; the default is the order they are written in.[/*]
+[*][b]shuffle[/b] is optional. true: this station plays its tracks in a new random order each time the game starts, whatever the player's Shuffle setting. false: it is never shuffled, even when that setting says every station. Left out: the player's setting decides.[/*]
 [/list]
 
 No durations, event names, indices, records, yaml or script. RadioXL reads each track's length from the file and builds everything else at load. A manifest with a mistake in it is skipped, and the log names the file and the line.
@@ -68,7 +68,7 @@ No durations, event names, indices, records, yaml or script. RadioXL reads each 
 Two tabs in the Redscript Configuration Framework panel.
 
 [b]Playback[/b]
-[b]Shuffle every station[/b], off by default. Off, every station plays its tracks in the order they were written, which is what the game does. On, every station, the game's own fourteen included, plays its tracks in a new random order each time the game starts. It takes effect on the next launch. A station mod can also ask for shuffle on its own station only, in its manifest.
+[b]Shuffle[/b], Off by default. Off, a station plays its tracks in the order they were written, which is what the game does. Every station, The game's own stations only, or Custom stations only: the chosen stations play their tracks in a new random order each time the game starts. It takes effect on the next launch. A station mod can set its own station to always or never shuffle in its manifest, and that wins for that station.
 
 [b]Mute radio when...[/b]
 Twelve switches, all on by default, and they apply to every station on the Radioport, the game's own included. Each is a situation in which the game silences the radio: a scene, a phone call, a club, fast travel and so on. On, a RadioXL station goes quiet there exactly as a vanilla station does. Off, a RadioXL station keeps playing through it. The game's own stations are never affected either way.

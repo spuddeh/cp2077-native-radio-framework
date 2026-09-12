@@ -221,11 +221,28 @@ std::string TrackKey(const Station& aStation, size_t aIndex)
 std::vector<Station> g_stations;
 bool g_patched = false;
 
-// **The "shuffle every station" switch is read from RCF's own file at boot, not through RCF.**
-// RCF restores a mod's settings when its game system attaches, long after the audio metadata has
-// loaded, so the one place the value exists early enough is the flat JSON RCF writes:
+// **The Shuffle setting is read from RCF's own file at boot, not through RCF.** RCF restores a
+// mod's settings when its game system attaches, long after the audio metadata has loaded, so the
+// one place the value exists early enough is the flat JSON RCF writes:
 // r6/storages/RedscriptConfigFramework/RadioXL.json. Absent file or key means off, the default.
-bool g_shuffleAll = false;
+// 0 off, 1 every station, 2 the game's own stations only, 3 custom stations only.
+int g_shuffleMode = 0;
+
+bool ShuffleVanillaWanted()
+{
+    return g_shuffleMode == 1 || g_shuffleMode == 2;
+}
+
+// A station's manifest may say `shuffle: true` or `false` for itself, and that wins; with nothing
+// said, the setting decides.
+bool ShuffleCustomWanted(const Station& aStation)
+{
+    if (aStation.shuffle >= 0)
+    {
+        return aStation.shuffle == 1;
+    }
+    return g_shuffleMode == 1 || g_shuffleMode == 3;
+}
 
 const RED4ext::v1::Sdk* g_sdk = nullptr;
 RED4ext::v1::PluginHandle g_handle = nullptr;
@@ -313,7 +330,7 @@ std::filesystem::path PluginDirectory()
 
 // Every mod drops its own folder, so nothing is shared and nothing can collide.
 //   red4ext/plugins/RadioXL/stations/<ModName>/station.json
-void ReadShuffleAll()
+void ReadShuffleMode()
 {
     const auto file = PluginDirectory().parent_path().parent_path().parent_path() / "r6" / "storages" /
                       "RedscriptConfigFramework" / "RadioXL.json";
@@ -329,14 +346,24 @@ void ReadShuffleAll()
     const std::string text = buffer.str();
     if (!radioxl::ParseJson(text, rootValue, error) || !rootValue.Is(radioxl::JsonValue::Kind::Object))
     {
-        Log("RadioXL.json (the settings file) did not parse - shuffle every station stays off");
+        Log("RadioXL.json (the settings file) did not parse - shuffle stays off");
         return;
     }
-    const radioxl::JsonValue* value = rootValue.Find("shuffleAll");
-    g_shuffleAll = value && value->Is(radioxl::JsonValue::Kind::Bool) && value->boolean;
-    if (g_shuffleAll)
+    const radioxl::JsonValue* value = rootValue.Find("shuffleMode");
+    if (value && value->Is(radioxl::JsonValue::Kind::Number))
     {
-        Log("shuffle every station: on");
+        const int mode = static_cast<int>(value->number);
+        g_shuffleMode = (mode >= 0 && mode <= 3) ? mode : 0;
+    }
+    else if (const radioxl::JsonValue* old = rootValue.Find("shuffleAll"))
+    {
+        // The switch this setting replaced. Its "on" is "every station".
+        g_shuffleMode = (old->Is(radioxl::JsonValue::Kind::Bool) && old->boolean) ? 1 : 0;
+    }
+    static const char* const kModes[] = {"off", "every station", "the game's own stations only", "custom stations only"};
+    if (g_shuffleMode != 0)
+    {
+        Log(std::string("shuffle: ") + kModes[g_shuffleMode]);
     }
 }
 
@@ -416,7 +443,7 @@ void LoadManifests()
         // derived from its position, so the order is fixed once the manifest is read and the
         // engine's schedule runs over it as written. A new order every session is the whole
         // feature; within a session the order is stable.
-        if ((station.shuffle || g_shuffleAll) && station.tracks.size() > 1)
+        if (ShuffleCustomWanted(station) && station.tracks.size() > 1)
         {
             std::mt19937 rng{std::random_device{}()};
             std::shuffle(station.tracks.begin(), station.tracks.end(), rng);
@@ -931,14 +958,14 @@ void OutString(RED4ext::CString* aOut, const std::string& aText)
 }
 } // namespace
 
-// The "shuffle every station" switch as read at boot, for the script side to shuffle the vanilla
-// stations' track lists while the metadata loads.
-void RadioXL_ShuffleAll(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
+// Whether the Shuffle setting, as read at boot, wants the game's own stations reordered - for the
+// script side to do while the metadata loads.
+void RadioXL_ShuffleVanilla(RED4ext::IScriptable*, RED4ext::CStackFrame* aFrame, bool* aOut, int64_t)
 {
     ++aFrame->code;
     if (aOut)
     {
-        *aOut = g_shuffleAll;
+        *aOut = ShuffleVanillaWanted();
     }
 }
 
@@ -1249,7 +1276,7 @@ void RegisterNatives()
     };
 
     reg("RadioXL_StationCount", &RadioXL_StationCount, "Int32", 0);
-    reg("RadioXL_ShuffleAll", &RadioXL_ShuffleAll, "Bool", 0);
+    reg("RadioXL_ShuffleVanilla", &RadioXL_ShuffleVanilla, "Bool", 0);
     reg("RadioXL_DialPosition", &RadioXL_DialPosition, "Int32", 1);
     reg("RadioXL_DialStation", &RadioXL_DialStation, "Int32", 1);
     reg("RadioXL_StationName", &RadioXL_StationName, "CName", 1);
@@ -1294,7 +1321,7 @@ RED4EXT_C_EXPORT bool RED4EXT_CALL Main(RED4ext::v1::PluginHandle aHandle,
         g_sdk = aSdk;
         g_handle = aHandle;
 
-        ReadShuffleAll();
+        ReadShuffleMode();
         LoadManifests();
         PatchRoster();
         // The engine names a station's current track by the 32-bit hash its localization row is

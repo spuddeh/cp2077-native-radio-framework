@@ -46,7 +46,7 @@ struct Station
     std::string atlas;         // the inkatlas resource holding that part, or empty for the framework's
     std::string speaker;       // audioRadioSpeakerType - the station's DJ
     float gain = kDefaultGain; // level trim applied to every track's samples, 0..1; see RadioXL_StationGain
-    bool shuffle = false;      // play the tracks in a new random order each session, decided at load
+    int shuffle = -1;          // -1 unset (the player's setting decides), 1 always shuffle, 0 never
     std::vector<Track> tracks;
     std::string source;        // which manifest it came from, for logging
     std::string folder;        // the manifest's own directory, which track files are relative to
@@ -209,7 +209,7 @@ inline bool ReadManifest(std::string_view aText, const std::string& aWhere, Stat
 
     if (const JsonValue* shuffle = expect(root, "shuffle", JsonValue::Kind::Bool, false))
     {
-        aOut.shuffle = shuffle->boolean;
+        aOut.shuffle = shuffle->boolean ? 1 : 0;
     }
 
     if (const JsonValue* tracks = expect(root, "tracks", JsonValue::Kind::Array, true))

@@ -72,6 +72,16 @@ public final func HandleRestriction(restriction: PocketRadioRestrictions, restri
   if IsDefined(state) {
     state.Record(EnumInt(restriction), restricted);
   }
-  wrappedMethod(restriction, RadioXLRestrictions.Applied(EnumInt(restriction), restricted, this.m_selectedStation));
+  let applied: Bool = RadioXLRestrictions.Applied(EnumInt(restriction), restricted, this.m_selectedStation);
+  RadioXLLog(s"restriction \(EnumInt(restriction)) actual=\(restricted) applied=\(applied) station=\(this.m_selectedStation) overwritten=\(this.m_isRestrictionOverwritten)");
+  wrappedMethod(restriction, applied);
+}
+
+// Every turn-off of the pocket radio, with who asked: a call that silences the radio through a
+// path other than a restriction shows up here as a TurnOff with no restriction line before it.
+@wrapMethod(PocketRadio)
+private final func TurnOff(playSFX: Bool) -> Void {
+  RadioXLLog(s"pocket radio TurnOff(playSFX=\(playSFX)) station=\(this.m_station) restricted=\(this.IsRestricted())");
+  wrappedMethod(playSFX);
 }
 

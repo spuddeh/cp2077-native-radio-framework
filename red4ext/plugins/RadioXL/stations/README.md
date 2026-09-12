@@ -31,7 +31,7 @@ soundbank, no redscript. Everything else is built from the manifest at load.
 | `displayName` | The label the game shows. Put the frequency at the front. |
 | `speaker` | Optional. The station's DJ. Defaults to `None`. |
 | `gain` | Optional. A level trim on every track, `0` to `1`. Defaults to `0.56`, which is -5 dB. |
-| `shuffle` | Optional. `true` plays the tracks in a new random order each time the game starts. Defaults to `false`: the order they are written in. |
+| `shuffle` | Optional. `true`: this station plays its tracks in a new random order each time the game starts, whatever the player's Shuffle setting. `false`: this station is never shuffled, even when the player's setting says every station. Left out: the player's setting decides. |
 | `icon` | Optional. An inkatlas part name. Defaults to the RadioXL glyph. |
 | `atlas` | Optional. The inkatlas holding that part, as a depot path (`mymod\gui\icons.inkatlas`, no `base\`). Required when `icon` is set. |
 | `tracks[].file` | An audio file, relative to this manifest's folder. |

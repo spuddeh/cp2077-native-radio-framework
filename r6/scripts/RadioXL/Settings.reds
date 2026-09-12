@@ -45,10 +45,11 @@ public class RadioXLConfig extends ScriptableSystem {
   public let muteFastForward: Bool = true;
   public let muteFastForwardHintActive: Bool = true;
 
-  // Every station, the game's fourteen included, plays its tracks in a new random order each
-  // launch. Off by default. Read by the plugin from RCF's file at boot, so it takes effect on the
-  // next launch, never the current one.
-  public let shuffleAll: Bool = false;
+  // 0 off, 1 every station, 2 the game's own stations only, 3 custom stations only. A station's
+  // manifest may still say `shuffle: true` or `false` for itself, and that wins for that station.
+  // Read by the plugin from RCF's file at boot, so it takes effect on the next launch, never the
+  // current one.
+  public let shuffleMode: Int32 = 0;
 
   // Whether the game's own silence for this restriction is kept for a custom station.
   public func MutesOn(restriction: Int32) -> Bool {
@@ -104,8 +105,8 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
     // **A Tip attaches to the LAST row built, whatever it is.** A tip written straight after a Tab
     // lands on the previous tab's last switch, or on nothing. Text that belongs to a tab is a Label.
     b.Tab("Playback");
-    b.Toggle("shuffleAll", "Shuffle every station");
-    b.Tip("Default: off. Every station plays its tracks in the order they were written, which is what the game does. On: every station, the game's own fourteen included, plays its tracks in a new random order each time the game starts.");
+    b.Dropdown("shuffleMode", "Shuffle", ["Off", "Every station", "The game's own stations only", "Custom stations only"]);
+    b.Tip("Default: Off. A station plays its tracks in the order they were written, which is what the game does. The other three play the chosen stations' tracks in a new random order each time the game starts. A station mod can set its own station to always or never shuffle, and that wins for that station.");
     b.Label("Takes effect on the next launch of the game.");
 
     b.Tab("Mute radio when...");
@@ -154,8 +155,20 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
     if Equals(key, "mutePhoneNoCalling") { return c.mutePhoneNoCalling; }
     if Equals(key, "muteFastForward") { return c.muteFastForward; }
     if Equals(key, "muteFastForwardHintActive") { return c.muteFastForwardHintActive; }
-    if Equals(key, "shuffleAll") { return c.shuffleAll; }
     return true;
+  }
+
+  public func GetInt(key: String) -> Int32 {
+    let c: wref<RadioXLConfig> = this.m_cfg;
+    if !IsDefined(c) { return 0; }
+    if Equals(key, "shuffleMode") { return c.shuffleMode; }
+    return 0;
+  }
+
+  public func SetInt(key: String, value: Int32) -> Void {
+    let c: wref<RadioXLConfig> = this.m_cfg;
+    if !IsDefined(c) { return; }
+    if Equals(key, "shuffleMode") { c.shuffleMode = value; }
   }
 
   public func SetBool(key: String, value: Bool) -> Void {
@@ -173,7 +186,6 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
     if Equals(key, "mutePhoneNoCalling") { c.mutePhoneNoCalling = value; }
     if Equals(key, "muteFastForward") { c.muteFastForward = value; }
     if Equals(key, "muteFastForwardHintActive") { c.muteFastForwardHintActive = value; }
-    if Equals(key, "shuffleAll") { c.shuffleAll = value; }
 
     // A switch changed while a restriction is in force takes effect now, not at the next scene.
     RadioXLRestrictions.Refresh();

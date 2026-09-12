@@ -96,7 +96,7 @@ void TestGood()
     Check(r.station.atlas == "toolfm\\gui\\tool_fm.inkatlas", "atlas keeps its backslashes", r.station.atlas);
     Check(r.station.speaker == "Stanley", "speaker");
     Check(r.station.gain == radioxl::kDefaultGain, "gain defaults");
-    Check(!r.station.shuffle, "shuffle defaults to off");
+    Check(r.station.shuffle == -1, "shuffle is unset by default");
     Check(r.station.tracks.size() == 2, "two tracks");
     Check(r.station.tracks[1].title == "Tool - 10,000 Days (Wings Pt. 2)", "second title");
 }
@@ -106,9 +106,9 @@ void TestShuffle()
     const std::string on = std::string(kGood).replace(std::string(kGood).find("\"speaker\""), 0, "\"shuffle\": true,\n  ");
     const Read r(on);
     Check(r.ok, "shuffle true reads", r.Joined());
-    Check(r.station.shuffle, "shuffle true is read");
+    Check(r.station.shuffle == 1, "shuffle true is read");
     const std::string off = std::string(kGood).replace(std::string(kGood).find("\"speaker\""), 0, "\"shuffle\": false,\n  ");
-    Check(!Read(off).station.shuffle, "shuffle false is read");
+    Check(Read(off).station.shuffle == 0, "shuffle false is read");
     ExpectFault("shuffle as a string is refused",
                 std::string(kGood).replace(std::string(kGood).find("\"speaker\""), 0, "\"shuffle\": \"yes\",\n  "),
                 "Mod/station.json:");
