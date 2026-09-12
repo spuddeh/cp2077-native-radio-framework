@@ -109,7 +109,7 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
     b.Label("Takes effect on the next launch of the game.");
 
     b.Tab("Mute radio when...");
-    b.Label("Every switch is on by default. On: the radio goes quiet in that situation, exactly as the game does. Off: a RadioXL station keeps playing through it. The game's own stations are never affected.");
+    b.Label("Every switch is on by default. On: the Radioport goes quiet in that situation, exactly as the game does. Off: it keeps playing through it, on every station, the game's own included.");
     b.Toggle("muteSceneTier", "A scene is playing");
     b.Tip("Default: on. Any scripted scene, from a conversation that takes some control away up to a full cutscene.");
     b.Toggle("mutePhoneCall", "A holo call is in progress");

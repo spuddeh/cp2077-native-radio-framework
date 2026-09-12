@@ -71,7 +71,7 @@ Two tabs in the Redscript Configuration Framework panel.
 [b]Shuffle every station[/b], off by default. Off, every station plays its tracks in the order they were written, which is what the game does. On, every station, the game's own fourteen included, plays its tracks in a new random order each time the game starts. It takes effect on the next launch. A station mod can also ask for shuffle on its own station only, in its manifest.
 
 [b]Mute radio when...[/b]
-Twelve switches, all on by default. Each is a situation in which the game silences the radio: a scene, a phone call, a club, fast travel and so on. On, a RadioXL station goes quiet there exactly as a vanilla station does. Off, a RadioXL station keeps playing through it. The game's own stations are never affected either way.
+Twelve switches, all on by default, and they apply to every station on the Radioport, the game's own included. Each is a situation in which the game silences the radio: a scene, a phone call, a club, fast travel and so on. On, a RadioXL station goes quiet there exactly as a vanilla station does. Off, a RadioXL station keeps playing through it. The game's own stations are never affected either way.
 
 Combat and police heat have no switch. The game ducks and stops every station in those, RadioXL stations included.
 
