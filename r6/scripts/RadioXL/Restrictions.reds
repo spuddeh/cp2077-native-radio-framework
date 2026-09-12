@@ -83,6 +83,28 @@ public class RadioXLRestrictions extends ScriptableSystem {
   }
 }
 
+// **One status effect carries every restriction a situation raises, and the game applies them one
+// tag at a time in a fixed order.** A holo call's effect carries the quest lock, the fast-travel
+// block and the call, and the call is walked last, so on its own each companion would be applied
+// before the call is known and the radio would drop out for the unlock delay. Recording every tag
+// the effect carries BEFORE the game walks them lets the first companion see the call already.
+@wrapMethod(PocketRadio)
+public final func OnStatusEffectApplied(evt: ref<ApplyStatusEffectEvent>, gameplayTags: script_ref<[CName]>) -> Void {
+  let state = RadioXLRestrictions.Get();
+  if IsDefined(state) {
+    if ArrayContains(Deref(gameplayTags), n"InDaClub") { state.Record(EnumInt(PocketRadioRestrictions.InDaClub), true); }
+    if ArrayContains(Deref(gameplayTags), n"BlockFastTravel") { state.Record(EnumInt(PocketRadioRestrictions.BlockFastTravel), true); }
+    if ArrayContains(Deref(gameplayTags), n"VehicleScene") { state.Record(EnumInt(PocketRadioRestrictions.VehicleScene), true); }
+    if ArrayContains(Deref(gameplayTags), n"VehicleBlockPocketRadio") { state.Record(EnumInt(PocketRadioRestrictions.VehicleBlockPocketRadio), true); }
+    if ArrayContains(Deref(gameplayTags), n"PhoneCall") { state.Record(EnumInt(PocketRadioRestrictions.PhoneCall), true); }
+    if ArrayContains(Deref(gameplayTags), n"PhoneNoTexting") { state.Record(EnumInt(PocketRadioRestrictions.PhoneNoTexting), true); }
+    if ArrayContains(Deref(gameplayTags), n"PhoneNoCalling") { state.Record(EnumInt(PocketRadioRestrictions.PhoneNoCalling), true); }
+    if ArrayContains(Deref(gameplayTags), n"FastForward") { state.Record(EnumInt(PocketRadioRestrictions.FastForward), true); }
+    if ArrayContains(Deref(gameplayTags), n"FastForwardHintActive") { state.Record(EnumInt(PocketRadioRestrictions.FastForwardHintActive), true); }
+  }
+  wrappedMethod(evt, gameplayTags);
+}
+
 @wrapMethod(PocketRadio)
 public final func HandleRestriction(restriction: PocketRadioRestrictions, restricted: Bool) -> Void {
   let state = RadioXLRestrictions.Get();
