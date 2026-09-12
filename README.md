@@ -12,9 +12,11 @@ around them.
 the page carry over, the audio side stays DigitalVixen's in AudioXL, and a station written for
 0.1.0 is converted to the manifest below (its script still compiles and the log names it).
 
-**Status: in development.** Two stations play on every receiver with their own names and icons;
-what is still open is in the [issues](https://github.com/spuddeh/cp2077-radio-xl/issues), with what
-has been measured on each.
+**Status: beta.** Stations play on every receiver with their own names, icons and song titles;
+tuning back in lands mid-song on the station's own clock; a vehicle radio survives being switched
+off and on; twelve "Mute radio when" switches and a Shuffle setting are in. What is still open is
+in the [issues](https://github.com/spuddeh/cp2077-radio-xl/issues), with what has been measured on
+each. Not on Nexus yet.
 
 ## What a station mod ships
 

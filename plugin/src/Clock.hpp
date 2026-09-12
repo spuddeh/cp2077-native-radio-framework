@@ -67,7 +67,8 @@ struct Watched
     std::vector<float> durations;     // each track's length in seconds
     int lastTrack = -1;               // the track last seen posted, for logging on change
     uint64_t lastUnmatched = 0;       // a returned key that matched no track, logged once
-    bool logged = false;
+    bool refused = false;             // AudioXL last refused this station's offset
+    bool reported = false;            // the one "resuming" line has been written
 };
 
 struct State
@@ -269,17 +270,7 @@ inline void Tick()
             continue;  // no session, or the station is not constructed yet
         }
         const int track = CurrentTrack(station);
-        if (track != station.lastTrack)
-        {
-            station.lastTrack = track;
-            if (track >= 0)
-            {
-                char buf[32];
-                std::snprintf(buf, sizeof(buf), "%.2f", clock);
-                Log(station.name + " is on track " + std::to_string(track) + " (" + station.rows[track] +
-                    "), clock " + buf + " s");
-            }
-        }
+        station.lastTrack = track;
         if (track < 0)
         {
             continue;
@@ -289,11 +280,21 @@ inline void Tick()
         const float duration = station.durations[track];
         const float at = (duration > 0.0f && clock >= duration) ? 0.0f : clock;
         const bool armed = Arm(station.rows[track], at);
-        if (heartbeat)
+        // A refusal is the only thing worth a line here: it means the row is not registered or
+        // AudioXL will not take the offset, and the track will start from 0. Logged once per
+        // stretch of refusals, not four times a second.
+        if (!armed && !station.refused)
+        {
+            Log(station.name + " track " + std::to_string(track) + ": AudioXL refused the start offset - "
+                "this track will begin at 0");
+        }
+        station.refused = !armed;
+        if (heartbeat && armed && !station.reported)
         {
             char buf[64];
-            std::snprintf(buf, sizeof(buf), "clock %.2f s, armed %.2f s %s", clock, at, armed ? "ok" : "REFUSED");
-            Log(station.name + " track " + std::to_string(track) + ": " + buf);
+            std::snprintf(buf, sizeof(buf), "resuming from the engine's clock (%.2f s on track ", clock);
+            Log(station.name + ": " + buf + std::to_string(track) + ")");
+            station.reported = true;
         }
     }
 }
