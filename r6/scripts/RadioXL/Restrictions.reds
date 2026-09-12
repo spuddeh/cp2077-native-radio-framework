@@ -42,10 +42,27 @@ public class RadioXLRestrictions extends ScriptableSystem {
   }
 
   // The value the pocket radio is told, for the station it has selected.
+  // **A switch is a situation, and a situation can raise more than one restriction.** A holo call
+  // raises the quest lock and the fast-travel block a millisecond before the call itself
+  // (measured), so lifting the call alone leaves the radio silenced by its companions. While the
+  // call is up and its switch is off, its companions are lifted with it; a companion raised on its
+  // own, by a quest, still mutes as its own switch says.
+  public static func IsCompanionOfLiftedCall(restriction: Int32) -> Bool {
+    if restriction != EnumInt(PocketRadioRestrictions.BlockFastTravel) &&
+       restriction != EnumInt(PocketRadioRestrictions.QuestContentLock) { return false; }
+    let cfg = RadioXLConfig.Get();
+    let state = RadioXLRestrictions.Get();
+    return IsDefined(cfg) && IsDefined(state) &&
+           state.Actual(EnumInt(PocketRadioRestrictions.PhoneCall)) &&
+           !cfg.MutesOn(EnumInt(PocketRadioRestrictions.PhoneCall));
+  }
+
   public static func Applied(restriction: Int32, restricted: Bool, station: Int32) -> Bool {
     if !restricted { return restricted; }
     let cfg = RadioXLConfig.Get();
-    return !IsDefined(cfg) || cfg.MutesOn(restriction);
+    if !IsDefined(cfg) { return true; }
+    if !cfg.MutesOn(restriction) { return false; }
+    return !RadioXLRestrictions.IsCompanionOfLiftedCall(restriction);
   }
 
   // Feed every restriction back through the pocket radio with its real value, so the wrap below
@@ -75,6 +92,20 @@ public final func HandleRestriction(restriction: PocketRadioRestrictions, restri
   let applied: Bool = RadioXLRestrictions.Applied(EnumInt(restriction), restricted, this.m_selectedStation);
   RadioXLLog(s"restriction \(EnumInt(restriction)) actual=\(restricted) applied=\(applied) station=\(this.m_selectedStation) overwritten=\(this.m_isRestrictionOverwritten)");
   wrappedMethod(restriction, applied);
+  // The call's companions arrive before the call does, so they were applied on their own switch.
+  // Now that the call is known, hand them their situation-aware value. The re-entry records the
+  // same actual and cannot loop, because a companion is never the call.
+  if Equals(restriction, PocketRadioRestrictions.PhoneCall) && IsDefined(state) {
+    let companions: array<PocketRadioRestrictions> = [PocketRadioRestrictions.BlockFastTravel, PocketRadioRestrictions.QuestContentLock];
+    let i: Int32 = 0;
+    while i < ArraySize(companions) {
+      let c: Int32 = EnumInt(companions[i]);
+      if state.Actual(c) && !Equals(this.m_restrictions[c], RadioXLRestrictions.Applied(c, true, this.m_selectedStation)) {
+        this.HandleRestriction(companions[i], true);
+      }
+      i += 1;
+    }
+  }
 }
 
 // Every turn-off of the pocket radio, with who asked: a call that silences the radio through a

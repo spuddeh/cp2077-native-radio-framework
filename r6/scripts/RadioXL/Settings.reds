@@ -105,7 +105,7 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
     // **A Tip attaches to the LAST row built, whatever it is.** A tip written straight after a Tab
     // lands on the previous tab's last switch, or on nothing. Text that belongs to a tab is a Label.
     b.Tab("Playback");
-    b.Dropdown("shuffleMode", "Shuffle", ["Off", "Every station", "The game's own stations only", "Custom stations only"]);
+    b.Dropdown("shuffleMode", "Shuffle", ["Off", "Every station", "Vanilla only", "Custom only"]);
     b.Tip("Default: Off. A station plays its tracks in the order they were written, which is what the game does. The other three play the chosen stations' tracks in a new random order each time the game starts. A station mod can set its own station to always or never shuffle, and that wins for that station.");
     b.Label("Takes effect on the next launch of the game.");
 
@@ -114,7 +114,7 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
     b.Toggle("muteSceneTier", "A scene is playing");
     b.Tip("Default: on. Any scripted scene, from a conversation that takes some control away up to a full cutscene.");
     b.Toggle("mutePhoneCall", "A holo call is in progress");
-    b.Tip("Default: on. From the moment a call connects until it ends.");
+    b.Tip("Default: on. From the moment a call connects until it ends. Off also lifts the quest lock and the fast-travel block a call raises with it, for the length of the call.");
     b.Toggle("muteQuestContentLock", "A quest has blocked the radio");
     b.Tip("Default: on. A story moment in which the quest switches the radio off outright.");
     b.Toggle("muteInDaClub", "You are inside a club");
