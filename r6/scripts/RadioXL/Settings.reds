@@ -45,6 +45,11 @@ public class RadioXLConfig extends ScriptableSystem {
   public let muteFastForward: Bool = true;
   public let muteFastForwardHintActive: Bool = true;
 
+  // Every station, the game's fourteen included, plays its tracks in a new random order each
+  // launch. Off by default. Read by the plugin from RCF's file at boot, so it takes effect on the
+  // next launch, never the current one.
+  public let shuffleAll: Bool = false;
+
   // Whether the game's own silence for this restriction is kept for a custom station.
   public func MutesOn(restriction: Int32) -> Bool {
     if restriction == EnumInt(PocketRadioRestrictions.SceneTier) { return this.muteSceneTier; }
@@ -96,24 +101,36 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
   public func BuildSchema() -> ref<DVRCF_Schema> {
     let b: ref<DVRCF_SchemaBuilder> = DVRCF_SchemaBuilder.New("RadioXL");
 
+    b.Tab("Playback");
+    b.Toggle("shuffleAll", "Shuffle every station");
+    b.Tip("Default: off. Every station plays its tracks in the order they were written, which is what the game does. On: every station, the game's own fourteen included, plays its tracks in a new random order each time the game starts. Takes effect on the next launch.");
+
     b.Tab("Mute radio when...");
-    b.Tip("Twelve situations in which the game silences the radio. Each switch is on by default, which is what the game does. Turn one off to keep a RadioXL station playing through it. Vanilla stations are never affected.");
+    b.Tip("Twelve situations in which the game silences the radio. Every switch is ON by default, and on means the radio goes quiet in that situation, exactly as the game does. Turn one OFF to keep a RadioXL station playing through it. Vanilla stations are never affected by these switches.");
     b.Toggle("muteSceneTier", "A scene is playing");
-    b.Tip("Cutscenes and scripted conversations.");
+    b.Tip("Default: on. Cutscenes and scripted conversations.");
     b.Toggle("mutePhoneCall", "A phone call is active");
+    b.Tip("Default: on. Holo calls, from the moment one connects until it ends.");
     b.Toggle("muteQuestContentLock", "A quest locks content");
-    b.Tip("Story moments that block distractions.");
+    b.Tip("Default: on. Story moments that block distractions.");
     b.Toggle("muteInDaClub", "You are in a club");
-    b.Tip("Clubs play their own music.");
+    b.Tip("Default: on. Clubs play their own music.");
     b.Toggle("muteVehicleScene", "A vehicle scene is playing");
+    b.Tip("Default: on. Scripted moments inside a vehicle, such as a passenger conversation.");
     b.Toggle("muteVehicleBlockPocketRadio", "The vehicle blocks the pocket radio");
+    b.Tip("Default: on. Vehicles that do not allow the Radioport, such as some quest vehicles.");
     b.Toggle("muteUpperBodyState", "Your upper body is busy");
-    b.Tip("Carrying a body, using a device, and similar.");
+    b.Tip("Default: on. Carrying a body, using a device, and similar.");
     b.Toggle("muteBlockFastTravel", "Fast travel is blocked");
+    b.Tip("Default: on. Areas and moments where the game disables fast travel.");
     b.Toggle("mutePhoneNoTexting", "Texting is blocked");
+    b.Tip("Default: on. Moments the game disables text messages.");
     b.Toggle("mutePhoneNoCalling", "Calling is blocked");
+    b.Tip("Default: on. Moments the game disables holo calls.");
     b.Toggle("muteFastForward", "Time is being fast-forwarded");
+    b.Tip("Default: on. Skipping time.");
     b.Toggle("muteFastForwardHintActive", "The fast-forward hint is showing");
+    b.Tip("Default: on. The prompt to skip time is on screen.");
     b.Tip("Combat and police heat are the game's own mix rules and apply to every station; they have no switch here.");
 
     return b.Build();
@@ -134,6 +151,7 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
     if Equals(key, "mutePhoneNoCalling") { return c.mutePhoneNoCalling; }
     if Equals(key, "muteFastForward") { return c.muteFastForward; }
     if Equals(key, "muteFastForwardHintActive") { return c.muteFastForwardHintActive; }
+    if Equals(key, "shuffleAll") { return c.shuffleAll; }
     return true;
   }
 
@@ -152,6 +170,7 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
     if Equals(key, "mutePhoneNoCalling") { c.mutePhoneNoCalling = value; }
     if Equals(key, "muteFastForward") { c.muteFastForward = value; }
     if Equals(key, "muteFastForwardHintActive") { c.muteFastForwardHintActive = value; }
+    if Equals(key, "shuffleAll") { c.shuffleAll = value; }
 
     // A switch changed while a restriction is in force takes effect now, not at the next scene.
     RadioXLRestrictions.Refresh();
