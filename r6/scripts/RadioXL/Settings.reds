@@ -101,37 +101,40 @@ public class RadioXLConfigProvider extends DVRCF_Provider {
   public func BuildSchema() -> ref<DVRCF_Schema> {
     let b: ref<DVRCF_SchemaBuilder> = DVRCF_SchemaBuilder.New("RadioXL");
 
+    // **A Tip attaches to the LAST row built, whatever it is.** A tip written straight after a Tab
+    // lands on the previous tab's last switch, or on nothing. Text that belongs to a tab is a Label.
     b.Tab("Playback");
     b.Toggle("shuffleAll", "Shuffle every station");
-    b.Tip("Default: off. Every station plays its tracks in the order they were written, which is what the game does. On: every station, the game's own fourteen included, plays its tracks in a new random order each time the game starts. Takes effect on the next launch.");
+    b.Tip("Default: off. Every station plays its tracks in the order they were written, which is what the game does. On: every station, the game's own fourteen included, plays its tracks in a new random order each time the game starts.");
+    b.Label("Takes effect on the next launch of the game.");
 
     b.Tab("Mute radio when...");
-    b.Tip("Twelve situations in which the game silences the radio. Every switch is ON by default, and on means the radio goes quiet in that situation, exactly as the game does. Turn one OFF to keep a RadioXL station playing through it. Vanilla stations are never affected by these switches.");
+    b.Label("Every switch is on by default. On: the radio goes quiet in that situation, exactly as the game does. Off: a RadioXL station keeps playing through it. The game's own stations are never affected.");
     b.Toggle("muteSceneTier", "A scene is playing");
-    b.Tip("Default: on. Cutscenes and scripted conversations.");
-    b.Toggle("mutePhoneCall", "A phone call is active");
-    b.Tip("Default: on. Holo calls, from the moment one connects until it ends.");
-    b.Toggle("muteQuestContentLock", "A quest locks content");
-    b.Tip("Default: on. Story moments that block distractions.");
-    b.Toggle("muteInDaClub", "You are in a club");
+    b.Tip("Default: on. Any scripted scene, from a conversation that takes some control away up to a full cutscene.");
+    b.Toggle("mutePhoneCall", "A holo call is in progress");
+    b.Tip("Default: on. From the moment a call connects until it ends.");
+    b.Toggle("muteQuestContentLock", "A quest has blocked the radio");
+    b.Tip("Default: on. A story moment in which the quest switches the radio off outright.");
+    b.Toggle("muteInDaClub", "You are inside a club");
     b.Tip("Default: on. Clubs play their own music.");
     b.Toggle("muteVehicleScene", "A vehicle scene is playing");
-    b.Tip("Default: on. Scripted moments inside a vehicle, such as a passenger conversation.");
-    b.Toggle("muteVehicleBlockPocketRadio", "The vehicle blocks the pocket radio");
-    b.Tip("Default: on. Vehicles that do not allow the Radioport, such as some quest vehicles.");
-    b.Toggle("muteUpperBodyState", "Your upper body is busy");
-    b.Tip("Default: on. Carrying a body, using a device, and similar.");
+    b.Tip("Default: on. A scripted scene inside a vehicle, such as a ride where a character talks to you.");
+    b.Toggle("muteVehicleBlockPocketRadio", "The vehicle blocks the Radioport");
+    b.Tip("Default: on. A vehicle set to switch the Radioport off during its ride.");
+    b.Toggle("muteUpperBodyState", "Your hands are forced empty");
+    b.Tip("Default: on. Carrying a body, or a scripted moment that takes your weapons away.");
     b.Toggle("muteBlockFastTravel", "Fast travel is blocked");
-    b.Tip("Default: on. Areas and moments where the game disables fast travel.");
+    b.Tip("Default: on. A quest state in which the game also disables fast travel.");
     b.Toggle("mutePhoneNoTexting", "Texting is blocked");
-    b.Tip("Default: on. Moments the game disables text messages.");
+    b.Tip("Default: on. A story moment in which the game has disabled text messages.");
     b.Toggle("mutePhoneNoCalling", "Calling is blocked");
-    b.Tip("Default: on. Moments the game disables holo calls.");
-    b.Toggle("muteFastForward", "Time is being fast-forwarded");
-    b.Tip("Default: on. Skipping time.");
-    b.Toggle("muteFastForwardHintActive", "The fast-forward hint is showing");
-    b.Tip("Default: on. The prompt to skip time is on screen.");
-    b.Tip("Combat and police heat are the game's own mix rules and apply to every station; they have no switch here.");
+    b.Tip("Default: on. A story moment in which the game has disabled holo calls.");
+    b.Toggle("muteFastForward", "A scene is being skipped");
+    b.Tip("Default: on. A scene or ride is being fast-forwarded with the hold-to-skip control.");
+    b.Toggle("muteFastForwardHintActive", "The skip prompt is on screen");
+    b.Tip("Default: on. The game is offering to skip a scene or ride: the hold-to-skip prompt is showing.");
+    b.Label("Combat and police heat have no switch. They are the game's own mix rules and apply to every station.");
 
     return b.Build();
   }
